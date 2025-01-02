@@ -1,0 +1,39 @@
+---
+title: "Wheat Stripe Rust"
+subtitle: "Exploratory Data Analysis"
+author:   
+  - name: Trent VanHawkins
+    affiliations:
+      - ref: osu
+    degrees: MS
+    corresponding: true
+  - name: Christopher Mundt
+    affiliations:
+      - ref: osu
+    degrees: PhD
+  - name: David Gent
+    affiliations:
+      - ref: usda
+      - ref: osu
+    degrees: PhD
+  - name: Sharmodeep Bhattacharyya
+    affiliations:
+      - ref: osu
+    degrees: PhD
+affiliations:
+  - id: osu
+    name: Oregon State University
+  - id: usda
+    name: U.S. Department of Agriculture
+format: html
+embed-resources: true
+toc: true
+code-fold: true
+execute: 
+  warning: false
+code-links:
+  - text: GitHub Repository
+    href: https://github.com/hawktre/BatHub_Trend.git
+page-layout: full
+---
+
