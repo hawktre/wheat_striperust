@@ -1,5 +1,5 @@
 ---
-title: "Wheat Stripe Rust"
+title: "Spread of Wheat Stripe Rust in an Experimental Framework"
 subtitle: "Exploratory Data Analysis"
 author:   
   - name: Trent VanHawkins
@@ -33,7 +33,406 @@ execute:
   warning: false
 code-links:
   - text: GitHub Repository
-    href: https://github.com/hawktre/BatHub_Trend.git
+    href: https://github.com/hawktre/wheat_striperust
 page-layout: full
+references: references.bib
+bibliography: references.bib
 ---
 
+# Introduction
+
+The purpose of this report is to document exploratory analyses and data cleaning procedures for data assessing the infection and spread of Stripe Rust (*Puccinia stiiformis*) among Wheat plants. These data were collected as part of an experimental procedure conducted between April and July of 2024 at the Hyslop Crop Science Field Laboratory in Benton County, Oregon. Previously, work by @gent2019 and @ojwang2021 has focused in prediction and inference for the spread of Powdery Mildew (*Humulus lupulus*) in Hop plants. We aim to leverage this work and apply the proposed methodology to another common plant pathogen damaging Wheat crops across the Pacific Northwest.
+
+# Methods
+
+## Experimental Design
+
+This experiment was conducted between the months of April and July of 2024 at the Hyslop Crop Science Field Laboratory in Benton County, Oregon. Wheat was planted in one of four blocks (labeled A-D), each containing three spatial replicates. Within each block, plants from the spatial replicates were inoculated with spores from *Puccinia stiiformis* at one, two, or four locations between April 9th and April 25th, 2024. After approximately one month, plots were surveyed weekly for **five** consecutive weeks. At each survey, domain experts examined individual plants for presence of the disease and estimated the proportion of the plant infected with the disease, expressed as a percentage (0-100). Individual plants are distinguished by their distance from the plot origin in meters.
+
+## Data Acquisition, Cleaning, and Exploration
+
+Survey data, along with inoculum locations were provided by Chris Mundt. Additional data capturing wind speed (mph) and direction (degrees azimuth) were acquired from a local weather station \<1 km from the survey locations at a 15-minute resolution.
+
+# Exploratory Data Analysis
+
+## Initial Visualizations
+
+```{r read_data}
+#Load the appropriate libraries
+library(tidyverse)
+library(here)
+library(readxl)
+
+## Survey Data
+stripe <- list()
+
+blocks <- paste0(rep(LETTERS[1:4], each = 3), 1:3)
+
+# Read in the data --------------------------------------------------------
+## Experimental Data
+for (sheet in blocks) {
+  stripe[[sheet]] <- read_xlsx(here("DataRaw/StripeRust.xlsx"), sheet = sheet)
+}
+
+stripe.full <- map(stripe, ~ .x %>%
+      pivot_longer(cols = 4:8, 
+                   names_to = "date", 
+                   values_to = "intensity") %>%
+      mutate(date = str_extract(date, "^[^(]+") %>% mdy(),
+             visit = paste0("visit", rep(1:5, length.out = n())))) %>% 
+  bind_rows()
+
+## inoculum Locations
+inoculum <- read_xlsx(here("DataRaw/StripeRust.xlsx"), sheet = "inoculum")
+
+## Clean up names
+names(stripe.full) <- tolower(names(stripe.full))
+
+## Create Unique Plant ID
+id_key <- stripe.full %>% 
+  select(plot, north, east) %>% 
+  distinct() %>% 
+  group_by(plot) %>% 
+  reframe(north = north,
+            east = east,
+            plant_id = paste0(plot, "_plant",row_number())) %>%
+  ungroup()
+
+## Get the total number of innocluations for each plot
+inoc_key <- inoculum %>% 
+  group_by(plot) %>% 
+  summarise(inoculum_total = max(inoculum_num)) %>% 
+  ungroup()
+
+## Split plots into blocks and tx number
+stripe.inoc <- stripe.full %>% 
+  left_join(inoc_key, by = "plot") %>% 
+  left_join(id_key, by = c("plot", "north", "east")) %>% 
+  separate_wider_position(plot, 
+                          widths = c("block" = 1, "rep" = 1),
+                          cols_remove = F)
+```
+
+Before applying any transformations or projections to the data, it may be helpful to first visualize the raw data and assess any potential outliers that may need further attention.
+
+```{r first_box}
+#| fig-height: 6
+#| fig-width: 8
+#| label: fig-rawbox
+#| fig-cap: "Boxplots of the raw data stratified by block (A, B, C, D) and total number of innoculations (1, 2, or 4)."
+
+#Load up color palatte
+colors <- wesanderson::wes_palette(name = "Zissou1", n = 5, type = "continuous")
+
+stripe.inoc %>% 
+  ggplot(aes(x = visit, y = intensity, fill = as.factor(inoculum_total))) +
+  geom_boxplot() +
+  facet_wrap(~block) +
+  labs(
+    x = "Visit",
+    y = "Disease Intensity",
+    fill = "Inoculation Sites",
+    title = "Intensity by Visit and Inoculation Sites"
+  ) +
+  scale_fill_manual(values = colors[c(1,3,5)])+
+  theme_minimal()+
+  theme(legend.position = "bottom")
+```
+
+It is clear from @fig-rawbox that we observe high variability in the disease intensity (diseased proportion of plant) as the disease spreads, making visual outlier assessment difficult. This phenomenon may be expected, as some plants are closer to the disease source than others. We can also visualize the disease progression by individual plant to assess potential abnormalities.
+
+```{r raw_spagheti}
+#| fig-height: 6
+#| fig-width: 8
+#| label: fig-rawspag
+#| fig-cap: "Sphagetti plot of the raw data stratified by block (A, B, C, D) and colored by total number of innoculations (1, 2, or 4)."
+stripe.inoc %>% 
+  ggplot(aes(x =as.numeric(as.factor(visit)), y = intensity, group = plant_id))+
+  geom_line(aes(color = as.factor(inoculum_total)), alpha = 0.25)+
+  facet_wrap(~block)+
+  labs(x = "Visit",
+       y = "Disease Intensity",
+       title = "Disease progression by individual plant",
+       color = "Inoculation Sites")+
+  scale_color_manual(values = colors[c(1,3,5)])+
+  theme_minimal()+
+  theme(legend.position = "bottom")
+```
+
+@fig-rawspag generally displays the expected pattern of disease progression. Again, it is difficult to assess if there are any true outliers since there are many factors impacting the variability of disease progression. One notable abnormality can be seen in **Block B**, where it appears that several plants have *decreasing* disease intensity between time-points 2 and 3 or 3 and 4. Letting $t$ denote time, @tbl-badplants details records of plants where $\text{intensity}_{t+1} < \text{intensity}_{t}$.
+
+```{r}
+#| label: tbl-badplants
+#| tbl-cap: "Individual plants that meeting the condition that disease intensity at one follow-up visit is less than that of the previous visit."
+observed_wide <- stripe.inoc %>%
+  select(plant_id, north, east, intensity, visit) %>% 
+  pivot_wider(id_cols = c(plant_id, north, east), names_from = visit, values_from = intensity)
+
+observed_wide %>% 
+  filter(visit2 < visit1 |
+           visit3 < visit2 | 
+           visit4 < visit3 | 
+           visit5 < visit4) %>% 
+  mutate(Row = row_number()) %>%  # Add a numbered row column
+  relocate(Row) %>%              # Move the Row column to the front
+  kableExtra::kable(
+    digits = 2,
+    col.names = c("Row", "Plant ID", "North", "East", paste0("Visit ", 1:5)),
+    escape = FALSE
+  ) %>% 
+  kableExtra::row_spec(c(3,10,12), background = "#B0C4DE") %>% # Highlight rows 2, 3, and 4
+  kableExtra::kable_styling(
+    full_width = FALSE,
+    bootstrap_options = c("hover", "condensed", "responsive")
+  )
+```
+
+Since assessment of disease intensity was made by visual estimation, it is possible that these records are attributable to measurement error. It is still important to confirm that these observations are biologically plausible. For this study, we will define diseased and non-diseased plants using a threshold value. Records with discrepancies between large values e.g.(Visit3 = 65, Visit4 = 60) will be unaffected, but plants with small discrepancies close to 0 could change between the diseased and non-diseased states. These records are [highlighted]{style="background-color: #B0C4DE; padding: 0.2em;"}.
+
+The last way we may wish to visualize these data are in their true spatial format.
+
+```{r}
+#| fig-height: 6
+#| fig-width: 8
+#| label: fig-rawsp
+#| fig-cap: "Plant locations plotted spatially with innoculation locations and colored by disease intensity across visits for Block A."
+library(sf)
+#Convert experimental data
+stripe.sp <- stripe.inoc %>%
+  st_as_sf(coords = c("east", "north"))
+
+#Convert inoculum locations
+inoc_sp <- left_join(inoculum, inoc_key, by = "plot") %>% 
+  st_as_sf(coords = c("east", "north")) %>% 
+  mutate(block = str_split_i(plot, "", 1))
+
+raw_spplot <- function(exp.dat, inoc.dat, block){
+  # Filter for the block we want
+  stripe.dat <- exp.dat %>% filter(block == {{block}})
+  inoc.dat <- inoc.dat %>% filter(block == {{block}})
+  
+  #Plot using raw intesity to color
+  ggplot()+
+    geom_sf(data = stripe.dat, 
+            aes(color = intensity), 
+            size = 3)+
+    geom_sf(data = inoc.dat, 
+            aes( fill= "Inoculation Point"), 
+            shape = 23, size = 3)+
+    facet_grid(rows = vars(plot), cols = vars(visit))+
+    labs(fill = "",
+         color = "Disease Intensity",
+         title = paste0("Block ", block, " (Intenstiy)"))+
+    theme_minimal()+
+    scale_color_gradient(low = colors[1], high = colors[4])+
+    theme(legend.position = "bottom")
+}
+
+raw_spplot(stripe.sp, inoc_sp, block = "A")
+```
+
+@fig-rawsp shows the spatial nature of the data along with inoculation locations to be checked for accuracy. Only Block A is plotted here for brevity, but plots for blocks B-D can be found in the supplement.
+
+## Threshold Selection
+
+The model proposed in @ojwang2021 requires a binary outcome. The data currently measure disease severity on a continous scale. To translate the data to the proper format, we must select a threshold. Plants with a measurement greather than that threshold at time $t$ will be considered "Diseased" and plants under that threshold will be considered "non-diseased". Here we will consider the thresholds $>0\%$, $\ge 1\%$, and $\ge 2\%$.
+
+```{r}
+#| layout-nrow: 3
+#| fig-height: 6
+#| fig-width: 8
+#| echo: False
+stripe.thresh <- stripe.sp %>% 
+  mutate(thresh_0 = if_else(intensity > 0, "Diseased", "Non-Diseased"),
+         thresh_1 = if_else(intensity >= 1, "Diseased", "Non-Diseased"),
+         thresh_2 = if_else(intensity >= 2, "Diseased", "Non-Diseased"))
+
+plot_thrsh <- function(block, thresh, title, exp.dat, inoc.dat){
+  threshold <- rlang::ensym(thresh)
+  
+  # Filter for the block we want
+  stripe.dat <- exp.dat %>% filter(block == {{block}})
+  inoc.dat <- inoc.dat %>% filter(block == {{block}})
+  
+  #Plot the data
+  ggplot() +
+    geom_sf(data = stripe.dat, 
+            aes(color = !!threshold), 
+            size = 3,
+            alpha = 0.5) +
+    geom_sf(data = inoc.dat, 
+            aes(fill = "Inoculation Point"), 
+            shape = 23, 
+            size = 3) +
+    facet_grid(rows = vars(plot), cols = vars(visit)) +
+    labs(fill = "",
+         color = "Disease Status",
+         title = title) +
+    theme_minimal() +
+    scale_color_manual(values = c(colors[4], colors[1])) +
+    theme(legend.position = "bottom")
+}
+
+
+plot_thrsh(block = "A", thresh_0, "Block: A, Threshold: > 0%", exp.dat = stripe.thresh, inoc.dat = inoc_sp)
+plot_thrsh("A", thresh_1, "Block: A, Threshold: > 1%", exp.dat = stripe.thresh, inoc.dat = inoc_sp)
+plot_thrsh("A", thresh_2, "Block: A, Threshold: > 2%", exp.dat = stripe.thresh, inoc.dat = inoc_sp)
+```
+
+The figure above visually displays the varying threshold options. Note that at the threshold $> 0\%$, very few plants are classified as *Non-Diseased* even at the first visit. Using this threshold value could lead to low variability, and singular matrices during the modeling portion of the study. When setting the threshold to $\ge 1\%$, we see many more plants that are not yet classified as *Non-Diseased* at visits 1 and 2. The difference is less dramatic between the threshold values of $\ge 1\%$ and $\ge 2\%$. All plants are considered to have the disease by Visit 3, regardless of the selected threshold. Plots for blocks B-D are available in the appendix of this report. @tbl-thresh displays the same information in a tabular format.
+
+```{r}
+#| label: tbl-thresh
+#| tbl-cap: "Summary of diesease status stratified across visits and total number of inoculum locations for Block A only. All plants have the disease by Visit 3, so later visits are excluded for brevity."
+library(table1)
+
+first_tab <- function(dat, blk){# Filter data for block "A"
+  filtered_data <- dat %>% 
+    filter(block == blk, 
+           visit %in% c("visit1", "visit2")) %>% 
+    mutate(visit = paste0("Visit ", str_split_i(visit, "",nchar(visit[1])))) %>% 
+    st_drop_geometry()
+
+  # Assign custom labels to variables
+  label(filtered_data$thresh_0) <- "Threshold 0%"
+  label(filtered_data$thresh_1) <- "Threshold 1%"
+  label(filtered_data$thresh_2) <- "Threshold 2%"
+
+  #Create Table 1
+  return(table1(~thresh_0 + thresh_1 + thresh_2 | plot * visit, 
+         data = filtered_data,
+         overall = F))
+}
+
+first_tab(stripe.thresh, blk = "A")
+
+```
+
+## Wind Data
+
+We can also look at some intuitive summaries of wind data before incorporating it into the analysis. Wind speed and direction were provided in 15-minute intervals from a local weather station (\<1 km).
+
+```{r}
+#| label: fig-overallwind
+#| fig-cap: "Summary of wind speed and direction during the duration of the study period (April 09, 2024 to June 15, 2024."
+library(circular)
+library(climaemet)
+
+#Read in the data
+wind <- read_xlsx(here("DataRaw/local_wind.xlsx"), 
+                  sheet = "Config 1",
+                  skip = 2)
+
+#Extract what we need 
+wind <- wind %>% 
+  select(1, 6, 7) %>% 
+  rename("datetime" = 1,
+         "direction" = 2,
+         "speed" = 3) %>% 
+  filter(datetime >= ymd_hms('2024-04-09 00:00:00') & 
+           datetime < ymd_hms('2024-06-16 00:00:00')) %>% 
+  mutate(period = if_else(datetime < as_datetime(min(stripe.full$date)), "Before Surveys", "During Surveys"),
+         month = month(datetime, label = T, abbr = F))
+
+#Convert to circular
+wind.direction <- circular(wind$direction, units = "degrees", template = "geographics") 
+
+wind_colors <- wesanderson::wes_palette(name = "Zissou1", n = 4, type = "continuous")
+#Plot it
+ggwindrose(speed = wind$speed, 
+             direction = wind.direction,
+           n_directions = 16,
+           speed_cuts = c(2, 3, 5, max(wind$speed))) +
+  labs(fill = "Wind Speed (m/s)",
+       title = "Overall Wind Summary")+
+  theme(legend.position = "bottom") + 
+  scale_fill_manual(values = wind_colors)
+```
+
+From @fig-overallwind, we can see that wind blew prodominantly in the North and North-Northwest Directions (circular mean = $`{r} round(as.numeric(mean(wind.direction)), 2)`^{\circ}$, circular SD = $`{r} round(as.numeric(sqrt(var(wind.direction))), 2)`^{\circ}$). Wind speeds largely fell in the gentle- (3-5 m/s) or moderate- (5-8 m/s) breeze category of the [Beaufort Scale](https://cdn.windy.app/site-storage/posts/November2022/beaufort-scale-chart-windyapp1.jpg). @fig-stratwind stratifies the study period by before the first survey date (May 17, 2024) or after the first survey date to assess any major shifts in wind patterns during these periods. It appears that wind patterns did not change greatly across these periods.
+
+```{r}
+#| label: fig-stratwind
+#| fig-cap: "Summary of wind speed and direction stratifying the study period by before and after the first survey date (May 15, 2024)."
+#| fig-width: 8
+ggwindrose(speed = wind$speed, 
+             direction = wind.direction,
+           speed_cuts = c(2, 3, 5, max(wind$speed)),
+           n_directions = 16,
+           facet = factor(wind$period),
+           n_col = 2)+
+  labs(fill = "Wind Speed (m/s)",
+       title = "Stratified Wind Summary")+
+  theme(legend.position = "bottom") + 
+  scale_fill_manual(values = wind_colors)
+```
+
+# Discussion
+
+In this report, we created visual and tabular data summaries to assess potential abnormalities or outliers in the provided survey and wind datasets before proceeding with model preparation and fitting.
+
+Initial visualizations of survey data revealed high variability in disease assessment, making outlier identification difficult; however, visual summaries (@fig-rawbox, @fig-rawspag, @fig-rawsp) demonstrated the expected rapid disease spread. For the present study, there is an immediate need to identify a biologically plausible threshold, above which point plants are considered to be infected with striperust. Here we considered the threshold values of $> 0 \%$, $\ge 1 \%$, and $\ge 2 \%$ and noted that we see a meaningful difference in the number of diseased plants at the initial survey between the $0 \%$ and $1 \%$ threshold. Input from a domain expert is needed to select a biologically meaningful threshold. Tables and Plots for the remaining blocks and spatial replicates can be found in the Appendix.
+
+It should be noted that some mild abnormalities were identified in which the diseased proportion of plants *decreased* between adjacent survey visits. A domain expert should verify that this is biologically possible, particularly for small values, as they could lead to transitioning disease states at certain threshold values. It is likely that this is simple measurement error, but should be verified in case disease intensity is used as a continuous outcome in future studies.
+
+Wind data were visually summarized to assess for drastic changes in wind patterns during the study period. No drastic changes were noted, but it is possible that other summaries may be necessary.
+
+# References
+
+::: {#refs}
+:::
+
+# Appendix
+
+## Mapping Plot ID to Total Number of Innoculations
+
+```{r}
+inoc_key %>% 
+  rename("Plot" = plot,
+         "Inoculum Locations" = inoculum_total) %>% 
+  kableExtra::kable(format = "html", table.attr = "style='width:30%;'") %>% 
+  kableExtra::kable_styling(bootstrap_options = c("basic", "hover"), full_width = FALSE)
+```
+
+## Raw Disease Intensity by Block
+
+```{r}
+#| fig-height: 6
+#| fig-width: 8
+raw_spplot(stripe.sp, inoc_sp, block = "B")
+raw_spplot(stripe.sp, inoc_sp, block = "C")
+raw_spplot(stripe.sp, inoc_sp, block = "D")
+```
+
+## Disease Status Threshold (Plot)
+
+```{r}
+blocks <- c("B", "C", "D")
+
+for (blk in blocks) {
+plot_thrsh(block = blk, 
+           thresh_0, 
+           paste0("Block: ", blk, " Threshold: > 0%"), 
+           exp.dat = stripe.thresh, 
+           inoc.dat = inoc_sp) %>% print()
+plot_thrsh(block = blk, 
+           thresh_1, 
+           paste0("Block: ", blk, " Threshold: > 1%"), 
+           exp.dat = stripe.thresh, 
+           inoc.dat = inoc_sp) %>% print()
+plot_thrsh(block = blk, 
+           thresh_2, 
+           paste0("Block: ", blk, " Threshold: > 2%"), 
+           exp.dat = stripe.thresh, 
+           inoc.dat = inoc_sp) %>% print()
+}
+
+```
+
+## Disease Status Threshold (Table)
+
+```{r}
+first_tab(stripe.thresh, blk = "B")
+first_tab(stripe.thresh, blk = "C")
+first_tab(stripe.thresh, blk = "D")
+```
