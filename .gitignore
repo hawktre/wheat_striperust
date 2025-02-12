@@ -42,6 +42,7 @@ vignettes/*.pdf
 *.mdb
 DataRaw/*
 DataProcessed/*
+Code/Archive/cdm_project/*
 !*/ReadMe.md
 # Reports
 *.html
