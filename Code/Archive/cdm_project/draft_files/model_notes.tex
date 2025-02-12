@@ -1,0 +1,129 @@
+\documentclass[12pt]{article}
+\RequirePackage[OT1]{fontenc}
+\RequirePackage[leqno,cmex10]{amsmath}
+\RequirePackage{amsthm}
+\RequirePackage[numbers]{natbib}
+\RequirePackage[colorlinks,citecolor=blue,urlcolor=blue]{hyperref}
+
+\usepackage{mathrsfs,dsfont}
+\usepackage{latexsym}
+\usepackage{amssymb}
+%\usepackage{epsfig}
+%\usepackage{fullpage}
+%\usepackage{setspace}
+\usepackage[english]{babel}
+\usepackage[latin1]{inputenc}
+\usepackage{color}
+\usepackage{amsfonts}
+\usepackage{bbm}
+\usepackage{enumerate}
+\RequirePackage{xspace}
+\usepackage[ruled, section]{algorithm}
+\usepackage{algpseudocode}
+%\usepackage{algorithmicx}
+%\usepackage{algorithm2e}
+%\usepackage[paper=a4paper,dvips,top=1.5cm,left=1.5cm,right=1.5cm,
+%    foot=1cm,bottom=1.5cm]{geometry}
+\usepackage{subfigure}
+\usepackage {graphicx}
+\usepackage {pgf}
+\usepackage{yhmath}
+\usepackage[normalem]{ulem}
+
+\usepackage{multido}
+\usepackage{pstricks,pst-plot,pstricks-add,pst-math}
+
+\pagestyle{empty}
+\textwidth=6.5in
+\parindent=0in
+\textheight=9.5in
+\hoffset=-.65in
+\voffset=-1.05in
+\def\Ans{\textcolor{blue}}
+
+\usepackage[T3,T1]{fontenc}
+\DeclareSymbolFont{tipa}{T3}{cmr}{m}{n}
+\DeclareMathAccent{\inv}{\mathalpha}{tipa}{16}
+
+%% Greek symbols
+\let\ga=\alpha \let\gb=\beta \let\gc=\gamma \let\gd=\delta \let\gee=\epsilon
+\let\gf=\varphi \let\gh=\eta \let\gi=\iota  \let\gk=\kappa \let\gl=\lambda \let\gm=\mu
+\let\gn=\nu \let\go=\omega \let\gp=\pi \let\gr=\rho \let\gs=\sigma \let\gt=\tau \let\gth=\vartheta
+\let\gx=\chi \let\gy=\upsilon \let\gz=\zeta
+\let\gC=\Gamma \let\gD=\Delta \let\gF=\Phi \let\gL=\Lambda \let\gTh=\Theta
+\let\gO=\Omega   \let\gP=\Pi    \let\gPs=\Psi  \let\gS=\Sigma \let\gU=\Upsilon \let\gX=\Chi
+\let\gY=\Upsilon
+
+\newcommand{\vx}{\mathbf{x}}
+
+
+\begin{document}
+
+\begin{center}
+{\Large Notes on Models}\\
+\vspace*{1cm}
+\end{center}
+
+We consider the model for disease spread and epidemic wave front starting from a single source point.
+
+Let us consider that $\vx_0 \in \mathbf{R}^2$ is the source point. Let us consider that the disease incidence at point $\vx \in \mathbf{R}^2$ is given by
+\begin{equation}
+\label{eqn:model}
+y(r, \phi, t|\gTh) = f(r, \phi, t| \gTh)
+\end{equation}  
+where, $\gTh$ are the parameters of the model and $(r, \phi)$ are the polar co-ordinates of the point $\vx$ with $\vx_0$ as the center.
+
+The following PDE models are considered for $y$:
+\begin{eqnarray}
+\label{eqn:pde1}
+\frac{\partial y}{\partial r} & = & -\frac{by(1-y)}{g(\phi) + r} \\ 
+\label{eqn:pde2}
+\frac{\partial y}{\partial t} & = & ay(1-y)
+\end{eqnarray}
+where, $g(\phi):[0, 2\pi] \rightarrow \mathbf{R}$ is a function of the angle between source and target; $a$ and $b$ are parameters of the model.
+
+Solving \eqref{eqn:pde1}, we get,
+\begin{equation}
+\label{eqn:rmodel}
+\log\left(\frac{y}{1-y}\right) = -b\log\left(1 + \frac{r}{g(\phi)}\right) + c(t, \phi)
+\end{equation}
+where, $c(t, \phi)$ is a normalizing function. Solving \eqref{eqn:pde2}, we get,
+\begin{equation}
+\label{eqn:tmodel}
+\log\left(\frac{y}{1-y}\right) = at + d(r, \phi)
+\end{equation}
+where, $d(r, \phi)$ is a normalizing function. Now, equating \eqref{eqn:rmodel} and \eqref{eqn:tmodel}, we get that,
+\begin{equation}
+\label{eqn:rtmodel}
+\log\left(\frac{y}{1-y}\right) = -b\log\left(1 + \frac{r}{g(\phi)}\right) + at + c(\phi)
+\end{equation}
+Now, if we consider a model for $\frac{\partial y}{\partial \phi}$, we can get a functional form for $c(\phi)$. But, for now, we are ignoring it.
+
+Now, by simplifying \eqref{eqn:rtmodel}, we get that,
+\begin{equation}
+y(r, \phi, t | \gTh) = \frac{1}{1+ \left(1 + \frac{r}{g(\phi)}\right)^b\exp^{-at}A(\phi)}
+\end{equation}
+where, the parameter set $\gTh = \{a, b, g(\cdot)\}$ and $A(\phi) = \frac{1}{c(\phi)}$. This is a disease incidence spatio-temporal process with spatial kernel: $A(\phi)\left(1 + \frac{r}{g(\phi)}\right)^{-b}$ (same as the geometric kernel in Rieux et. al. (2014)).
+
+Now, velocity,
+\begin{eqnarray}
+\nonumber
+v & = & -\frac{\partial r}{\partial t} = \frac{a}{b}\left(\frac{1}{g(\phi) + r}\right)^{-1} \\
+\label{eqn:vmodel}
+ & = & M \left(\frac{1}{g(\phi) + r}\right)^{-1}
+\end{eqnarray}
+where, $M=\frac{a}{b}$ is a parameter. Integrating \eqref{eqn:vmodel}, we get that,
+\begin{equation}
+\label{eqn:fitmodel1}
+\log\left(1 + \frac{r}{g(\phi)}\right) = -Mt + h(\phi)
+\end{equation}
+or,
+\begin{equation}
+\label{eqn:fitmodel2}
+r = g(\phi)\left(1 - u(\phi)\exp^{-Mt}\right)
+\end{equation}
+where, $h(\phi)$ and $u(\phi)$ are normalizing function parameters.
+
+Remember that we fit the models \eqref{eqn:fitmodel1} and \eqref{eqn:fitmodel2} using the data $\{(r_1, \phi_1, t_1), \ldots, (r_n, \phi_n, t_n)\}$.
+
+\end{document}

@@ -16,6 +16,9 @@ author:
       - ref: usda
       - ref: osu
     degrees: PhD
+  - name: Shirshendu Chatterjee
+    affiliations:
+      - ref: nyu
   - name: Sharmodeep Bhattacharyya
     affiliations:
       - ref: osu
@@ -25,6 +28,8 @@ affiliations:
     name: Oregon State University
   - id: usda
     name: U.S. Department of Agriculture
+  - id: nyu
+    name: City University of New York
 format: html
 embed-resources: true
 toc: true
@@ -41,17 +46,17 @@ bibliography: references.bib
 
 # Introduction
 
-The purpose of this report is to document exploratory analyses and data cleaning procedures for data assessing the infection and spread of Stripe Rust (*Puccinia stiiformis*) among Wheat plants. These data were collected as part of an experimental procedure conducted between April and July of 2024 at the Hyslop Crop Science Field Laboratory in Benton County, Oregon. Previously, work by @gent2019 and @ojwang2021 has focused in prediction and inference for the spread of Powdery Mildew (*Humulus lupulus*) in Hop plants. We aim to leverage this work and apply the proposed methodology to another common plant pathogen damaging Wheat crops across the Pacific Northwest.
+The purpose of this report is to document exploratory analyses and data cleaning procedures for data assessing the infection and spread of Stripe Rust (*Puccinia stiiformis*) among Wheat plants. These data were collected as part of an experimental procedure conducted between April and July of 2024 at the Hyslop Crop Science Field Laboratory in Benton County, Oregon. Previously, work by @gent2019 and @ojwang2021 has focused in prediction and inference for the spread of Hop Powdery Mildew (*Humulus lupulus*). We aim to leverage this work in addressing the hypothesis that "Locations of multiple sources of epidemic outbreak can be imputed from population dynamic models" as part of the Ecology and Evolution of Infectious Diseases (EEID) grant focused on Long-Distance Dispersal.
 
 # Methods
 
 ## Experimental Design
 
-This experiment was conducted between the months of April and July of 2024 at the Hyslop Crop Science Field Laboratory in Benton County, Oregon. Wheat was planted in one of four blocks (labeled A-D), each containing three spatial replicates. Within each block, plants from the spatial replicates were inoculated with spores from *Puccinia stiiformis* at one, two, or four locations between April 9th and April 25th, 2024. After approximately one month, plots were surveyed weekly for **five** consecutive weeks. At each survey, domain experts examined individual plants for presence of the disease and estimated the proportion of the plant infected with the disease, expressed as a percentage (0-100). Individual plants are distinguished by their distance from the plot origin in meters.
+This experiment was conducted between the months of April and July of 2024 at the Hyslop Crop Science Field Laboratory in Benton County, Oregon. Wheat was planted in one of four blocks (labeled A-D), each containing three replicates (plots). Within each block, each $30.5 \times 30.5$ m plot was inoculated with spores from *Puccinia stiiformis* at one, two, or four locations of equal size ($0.76 \times 0.76$ m) between April 9th and April 25th, 2024. After approximately one month, plots were surveyed weekly for **five** consecutive weeks beginning May 17th, 2024. At each survey, domain experts visually estimated disease prevalence in $1.52 \times 1.52$ m grids, expressed as a percentage (0-100) of infected plant tissue within the sampling grid. Individual sampling locations are distinguished by their distance from the plot origin in meters. Further details of the experimental design may be found on pages 6 & 7 of the EEID Project Grant.
 
 ## Data Acquisition, Cleaning, and Exploration
 
-Survey data, along with inoculum locations were provided by Chris Mundt. Additional data capturing wind speed (mph) and direction (degrees azimuth) were acquired from a local weather station \<1 km from the survey locations at a 15-minute resolution.
+Survey data, along with inoculum locations were provided by Chris Mundt. Additional data capturing wind speed (mph) and direction (degrees azimuth) were acquired from a local weather station \<1 km from the survey locations at a 15-minute resolution for the duration of the study period.
 
 # Exploratory Data Analysis
 
@@ -139,7 +144,7 @@ stripe.inoc %>%
   theme(legend.position = "bottom")
 ```
 
-It is clear from @fig-rawbox that we observe high variability in the disease intensity (diseased proportion of plant) as the disease spreads, making visual outlier assessment difficult. This phenomenon may be expected, as some plants are closer to the disease source than others. We can also visualize the disease progression by individual plant to assess potential abnormalities.
+It is clear from @fig-rawbox that we observe high variability in the disease intensity (diseased proportion of plant) as the disease spreads, making visual outlier assessment difficult. This phenomenon may be expected, as some plants are closer to the disease source than others. We can also visualize the disease progression by individual survey grid to assess potential abnormalities.
 
 ```{r raw_spagheti}
 #| fig-height: 6
@@ -152,14 +157,14 @@ stripe.inoc %>%
   facet_wrap(~block)+
   labs(x = "Visit",
        y = "Disease Intensity",
-       title = "Disease progression by individual plant",
+       title = "Disease progression by individual survey grid",
        color = "Inoculation Sites")+
   scale_color_manual(values = colors[c(1,3,5)])+
   theme_minimal()+
   theme(legend.position = "bottom")
 ```
 
-@fig-rawspag generally displays the expected pattern of disease progression. Again, it is difficult to assess if there are any true outliers since there are many factors impacting the variability of disease progression. One notable abnormality can be seen in **Block B**, where it appears that several plants have *decreasing* disease intensity between time-points 2 and 3 or 3 and 4. Letting $t$ denote time, @tbl-badplants details records of plants where $\text{intensity}_{t+1} < \text{intensity}_{t}$.
+@fig-rawspag generally displays the expected pattern of disease progression. Again, it is difficult to assess if there are any true outliers since there are many factors impacting the variability of disease progression. One notable abnormality can be seen in **Block B**, where it appears that several grids have *decreasing* disease intensity between time-points 2 and 3 or 3 and 4. Letting $t$ denote time, @tbl-badplants details records of plants where $\text{intensity}_{t+1} < \text{intensity}_{t}$.
 
 ```{r}
 #| label: tbl-badplants
@@ -199,12 +204,14 @@ The last way we may wish to visualize these data are in their true spatial forma
 library(sf)
 #Convert experimental data
 stripe.sp <- stripe.inoc %>%
+  mutate(plot_inoc_id = paste0(block, inoculum_total)) %>% 
   st_as_sf(coords = c("east", "north"))
 
 #Convert inoculum locations
 inoc_sp <- left_join(inoculum, inoc_key, by = "plot") %>% 
   st_as_sf(coords = c("east", "north")) %>% 
-  mutate(block = str_split_i(plot, "", 1))
+  mutate(block = str_split_i(plot, "", 1),
+         plot_inoc_id = paste0(block, inoculum_total))
 
 raw_spplot <- function(exp.dat, inoc.dat, block){
   # Filter for the block we want
@@ -219,7 +226,7 @@ raw_spplot <- function(exp.dat, inoc.dat, block){
     geom_sf(data = inoc.dat, 
             aes( fill= "Inoculation Point"), 
             shape = 23, size = 3)+
-    facet_grid(rows = vars(plot), cols = vars(visit))+
+    facet_grid(rows = vars(plot_inoc_id), cols = vars(visit))+
     labs(fill = "",
          color = "Disease Intensity",
          title = paste0("Block ", block, " (Intenstiy)"))+
@@ -235,7 +242,7 @@ raw_spplot(stripe.sp, inoc_sp, block = "A")
 
 ## Threshold Selection
 
-The model proposed in @ojwang2021 requires a binary outcome. The data currently measure disease severity on a continous scale. To translate the data to the proper format, we must select a threshold. Plants with a measurement greather than that threshold at time $t$ will be considered "Diseased" and plants under that threshold will be considered "non-diseased". Here we will consider the thresholds $>0\%$, $\ge 1\%$, and $\ge 2\%$.
+The model proposed in @ojwang2021 requires a binary outcome. The data currently measure disease severity on a continous scale. To translate the data to the proper format, we must select a threshold. Plants with a measurement greather than that threshold at time $t$ will be considered "Diseased" and plants under that threshold will be considered "non-diseased". Here we will consider the thresholds $>0\%$, $\ge 1\%$, $\ge 2\%$, and $\ge 5\%$.
 
 ```{r}
 #| layout-nrow: 3
@@ -245,7 +252,8 @@ The model proposed in @ojwang2021 requires a binary outcome. The data currently 
 stripe.thresh <- stripe.sp %>% 
   mutate(thresh_0 = if_else(intensity > 0, "Diseased", "Non-Diseased"),
          thresh_1 = if_else(intensity >= 1, "Diseased", "Non-Diseased"),
-         thresh_2 = if_else(intensity >= 2, "Diseased", "Non-Diseased"))
+         thresh_2 = if_else(intensity >= 2, "Diseased", "Non-Diseased"),
+         thresh_5 = if_else(intensity >= 5, "Diseased", "Non-Diseased"))
 
 plot_thrsh <- function(block, thresh, title, exp.dat, inoc.dat){
   threshold <- rlang::ensym(thresh)
@@ -264,7 +272,7 @@ plot_thrsh <- function(block, thresh, title, exp.dat, inoc.dat){
             aes(fill = "Inoculation Point"), 
             shape = 23, 
             size = 3) +
-    facet_grid(rows = vars(plot), cols = vars(visit)) +
+    facet_grid(rows = vars(plot_inoc_id), cols = vars(visit)) +
     labs(fill = "",
          color = "Disease Status",
          title = title) +
@@ -277,19 +285,20 @@ plot_thrsh <- function(block, thresh, title, exp.dat, inoc.dat){
 plot_thrsh(block = "A", thresh_0, "Block: A, Threshold: > 0%", exp.dat = stripe.thresh, inoc.dat = inoc_sp)
 plot_thrsh("A", thresh_1, "Block: A, Threshold: > 1%", exp.dat = stripe.thresh, inoc.dat = inoc_sp)
 plot_thrsh("A", thresh_2, "Block: A, Threshold: > 2%", exp.dat = stripe.thresh, inoc.dat = inoc_sp)
+plot_thrsh("A", thresh_5, "Block: A, Threshold: > 5%", exp.dat = stripe.thresh, inoc.dat = inoc_sp)
 ```
 
-The figure above visually displays the varying threshold options. Note that at the threshold $> 0\%$, very few plants are classified as *Non-Diseased* even at the first visit. Using this threshold value could lead to low variability, and singular matrices during the modeling portion of the study. When setting the threshold to $\ge 1\%$, we see many more plants that are not yet classified as *Non-Diseased* at visits 1 and 2. The difference is less dramatic between the threshold values of $\ge 1\%$ and $\ge 2\%$. All plants are considered to have the disease by Visit 3, regardless of the selected threshold. Plots for blocks B-D are available in the appendix of this report. @tbl-thresh displays the same information in a tabular format.
+The figure above visually displays the varying threshold options. Note that at the threshold $> 0\%$, very few plants are classified as *Non-Diseased* even at the first visit. Using this threshold value could lead to low variability, and issues with identifiability during the modeling portion of the study. When setting the threshold to $\ge 1\%$, we see many more plants that are not yet classified as *Non-Diseased* at visits 1 and 2. The difference is less dramatic between the threshold values of $\ge 1\%$ and $\ge 2\%$. All plants are considered to have the disease by Visit 3 using these smaller threshold values.The threshold of $\ge 5\%$ is visualized to represent a more stringent threshold option. Here, we see that there are still some plants remaining below the $5\%$ threshold at visit 3; however, all plants are beyond the threshold by visit 4. Plots for blocks B-D are available in the appendix of this report. @tbl-thresh displays the same information in a tabular format.
 
 ```{r}
 #| label: tbl-thresh
-#| tbl-cap: "Summary of diesease status stratified across visits and total number of inoculum locations for Block A only. All plants have the disease by Visit 3, so later visits are excluded for brevity."
+#| tbl-cap: "Summary of diesease status stratified across visits and total number of inoculum locations for Block A only. All plants have the disease by Visit 4, so later visits are excluded for brevity."
 library(table1)
 
 first_tab <- function(dat, blk){# Filter data for block "A"
   filtered_data <- dat %>% 
     filter(block == blk, 
-           visit %in% c("visit1", "visit2")) %>% 
+           visit %in% c("visit1", "visit2", "visit3")) %>% 
     mutate(visit = paste0("Visit ", str_split_i(visit, "",nchar(visit[1])))) %>% 
     st_drop_geometry()
 
@@ -297,9 +306,10 @@ first_tab <- function(dat, blk){# Filter data for block "A"
   label(filtered_data$thresh_0) <- "Threshold 0%"
   label(filtered_data$thresh_1) <- "Threshold 1%"
   label(filtered_data$thresh_2) <- "Threshold 2%"
+  label(filtered_data$thresh_5) <- "Threshold 5%"
 
   #Create Table 1
-  return(table1(~thresh_0 + thresh_1 + thresh_2 | plot * visit, 
+  return(table1(~thresh_0 + thresh_1 + thresh_2 + thresh_5 | plot_inoc_id * visit, 
          data = filtered_data,
          overall = F))
 }
@@ -423,6 +433,11 @@ plot_thrsh(block = blk,
 plot_thrsh(block = blk, 
            thresh_2, 
            paste0("Block: ", blk, " Threshold: > 2%"), 
+           exp.dat = stripe.thresh, 
+           inoc.dat = inoc_sp) %>% print()
+plot_thrsh(block = blk, 
+           thresh_5, 
+           paste0("Block: ", blk, " Threshold: > 5%"), 
            exp.dat = stripe.thresh, 
            inoc.dat = inoc_sp) %>% print()
 }

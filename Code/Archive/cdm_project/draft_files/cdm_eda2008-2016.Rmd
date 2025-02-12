@@ -1,0 +1,106 @@
+---
+title: "CDM 2008-2016 Exploratory Summaries"
+author: "Trevor Ruiz"
+date: "January 7, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+options(stringsAsFactors = F)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+library(ggmap)
+library(pander)
+load('cdm_data.RData')
+data[602, 3]
+data[602, 3] <- ymd("2008/08/22") #typo
+```
+
+# Tables
+
+## variable summary table
+```{r vartbl}
+var_summary_tbl <- group_by(data, year(report_date)) %>%
+  summarize(n_counties = n_distinct(county),
+            n_states = n_distinct(state),
+            n_locations = n_distinct(locID),
+            n_occurrences = sum(occurrence, na.rm = T),
+            n_reports = length(report_date)) %>%
+  rename(year = `year(report_date)`)
+
+pander(var_summary_tbl)
+```
+
+## Disease occurrence counts by year and host
+```{r occtbl1}
+tbl <- xtabs(occurrence ~ planting + host + year(report_date), data = data)
+apply(tbl, c(3, 2), sum) %>%
+  pander()
+```
+
+# Disease occurrence counts by year and planting
+```{r occtbl2}
+apply(tbl, c(3, 1), sum) %>%
+  pander()
+```
+
+## Disease occurrence counts by host and planting
+```{r occtbl3}
+apply(tbl, c(2, 1), sum) %>%
+  pander()
+```
+
+# Plots
+
+## distributions of occurrences over time of year by host
+```{r timeplot1}
+ggplot(aes(x = yday(report_date),
+           color = host),
+       data = data) +
+  geom_density(adjust = 1.5) +
+  theme_bw()
+```
+
+## Map of report dates aggregated over all years, plantings, hosts
+```{r mapsetup, include = F}
+locations <- select(data, lat, long, locID) %>% distinct()
+plot_df1 <- group_by(data, year(report_date), locID, host) %>%
+  summarize(first_report = min(report_date)) %>% 
+  merge(locations, by = 'locID') %>%
+  filter(long < 0) # filter step removes 3 rows
+
+bbox <- make_bbox(plot_df1$long, plot_df1$lat)
+map <- get_stamenmap(bbox, zoom = calc_zoom(bbox), maptype = 'toner')
+```
+
+```{r map1}
+ggmap(map, darken = c(0.4, "white"), extent = 'normal') +
+  geom_point(aes(x = long, y = lat, color = yday(first_report)),
+             data = plot_df1) +
+  scale_color_gradientn(colors = terrain.colors(100)) +
+  theme_bw()
+```
+
+## Map of report dates by host (except "other"), aggregated over all years and plantings
+```{r map2}
+ggmap(map, darken = c(0.4, "white"), extent = 'normal') +
+  geom_point(aes(x = long, y = lat, color = yday(first_report)),
+             data = filter(plot_df1, 
+                           host %in% levels(data$host)[c(2:7)])) +
+  facet_wrap(~host, drop = T, nrow = 2) +
+  scale_color_gradientn(colors = terrain.colors(100)) +
+  theme_bw()
+```
+
+## Map of report dates by year, aggregated over all hosts and plantings
+```{r map3}
+ggmap(map, darken = c(0.4, "white"), extent = 'normal') +
+  geom_point(aes(x = long, y = lat, color = yday(first_report)),
+             data = plot_df1) +
+  facet_wrap(~`year(report_date)`, drop = T, nrow = 3) +
+  scale_color_gradientn(colors = terrain.colors(100)) +
+  theme_bw()
+```

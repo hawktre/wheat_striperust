@@ -1,0 +1,1017 @@
+---
+date: "April 7, 2020"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pander)
+library(gganimate)
+```
+
+## Model specification
+
+Our **anisotropic one-source** model is derived from the PDEs
+
+$$\frac{\partial y}{\partial \rho} = -\frac{by(1-y)}{g(\theta) + \rho}$$
+
+and
+
+$$\frac{\partial y}{\partial t} = ay(1-y)$$
+
+where $y$ is disease incidence at a particular spatial location with polar coordinates $(r, \theta)$ relative to the source, $g(\theta):[0, 2\pi] \rightarrow \mathbf{R}$ is a function of the angle between source and target; $a$ and $b$ are parameters of the model. Integrating velocity  $\left(-\frac{\partial \rho}{\partial t}\right)$ with respect to time yields our model:
+
+$$\log\left(1 + \frac{\rho}{g(\theta)}\right) = -Mt + h(\theta)$$
+
+where $M = \frac{a}{b}$ and $h$ is a normalizing function.
+
+The **isotropic one-source model** is a special case obtained by setting $g \equiv 0$ in the PDE, yielding:
+
+$$\log\left(\rho\right) = -Mt + c$$
+
+To extend our one-source model to the **anisotropic two-source model**, we allow $(r_1, \theta_1)$ to represent location relative to source 1 and $(r_2, \theta_2)$ to represent location relative to source 2. Then a latent Bernoulli variable 
+
+$$Z = \mathbf{1}\{y \text{ is caused by source 1}\}$$
+
+is introduced with parameter $p = P(Z = 1)$, and we let 
+
+$$\log\left(1 + \frac{\rho_1}{g_1(\theta_1)}\right) = -M_1t + h_1(\theta_1), \text{ if }Z = 1$$
+
+and
+
+$$\log\left(1 + \frac{\rho_2}{g_2(\theta_2)}\right) = -M_2t + h_2(\theta_2), \text{ if }Z = 0$$
+
+## Data preprocessing
+
+Our raw data are reports of disease incidence on a variety of hosts from commercial farms, gardens, and sentinel plots. In terms of location and time they come in the form of $(\text{lat}_i, \text{long}_i, \text{date}_i)$ for $i = 1, \dots, n$. In preprocessing, we subset the data to include only sentinel plot reports from before August, in order to ensure (more) consitent reporting protocol and consider only disease occurrences due to the first planting of crops. Next, the subsetted data is converted to $(\rho_{i1}, \theta_{i1}, \rho_{i2}, \theta_{i2}, t_i, \text{year}_i)$, where $t_i \in \{1, \dots, 366 \}$ is the day of the year. The location for the first source is the first occurrence in the dataset each year; the location for the second source is hypothesized based on the timing and location of early occurrences in the north and anecdotal information about the timing of plantings in southern Ontario. Since occurrences in the north happen later than the initial occurrence, we adopt the convention of setting $(\rho_{i2}, \theta_{i2}) = (NA, NA)$ whenever the time of report precedes the time at which the northern source is stipulated to appear. For the northern source, two potential locations were identified, one in NY and one in MI. Depending on the year, disease is observed in these locations between weeks 27 and 30. Thus the data can be preprocessed using either location and a range of times, and the results of analysis are likely to exhibit some sensitivity to these choices.
+
+We include estimation of $g_1, g_2$ as a preprocessing step. We use hourly observations of wind directions in the date range represented in the data subset recorded at the county centriod closest to each source. We compute $\hat{g}_1, \hat{g}_2$ as nonparametric kernel density estimates of the distribution of wind directions recorded at each centriod. Finally, we compute $\hat{g}_1(\theta_{i1})$ and $\hat{g}_2(\theta_{i2})$ for $i = 1, \dots, n$.
+
+The preprocessing codes are cumbersome, so they have been stored as a separate script. The location and timing of the northern source are retained as options to fix in advance of sourcing the preprocessing script.
+```{r preprocess, warning=F, message=F}
+wk <- 26 # week of year at which N source appears
+MI <- 1 # N source location (1 = MI, 0 = NY)
+source('two_source_preprocessing.R')
+```
+
+## Model estimation
+
+To estimate each model (isotropic one-source, anisotropic one-source, and anisotropic two-source), regression is used. From the preprocessed data, response variables are calculated as:
+
+$$\text{response}_{i0} = log(\rho_{i1})$$
+
+$$\text{response}_{i1} = log\left( 1 + \frac{\rho_{i1}}{\hat{g}_1(\theta_{i1})}\right)$$
+
+$$\text{response}_{i2} = log\left( 1 + \frac{\rho_{i2}}{\hat{g}_2(\theta_{i2})}\right)$$
+
+For the one-source models, normal error terms are appended to each model and the functions $h_1, h_2$ are approximated by basis expansions. This yields the regression models:
+
+$$\text{response}_{i0} = \beta_0 + \beta_1 t_i + \epsilon_i$$
+
+$$\text{response}_{i1} = \beta_0 + \beta_1 t_i + \beta_2 \sin(\theta_{i1}) + \beta_3 \sin\left(\theta_{i1} + \frac{\pi}{4}\right) + \epsilon_i$$
+
+$$\text{response}_{i2} = \beta_0 + \beta_1 t_i + \beta_2 \sin(\theta_{i1}) + \beta_3 \sin\left(\theta_{i1} + \frac{\pi}{4}\right) + \epsilon_i$$
+
+To estimate the **isotropic one-source** model, we estimate by ordinary least squares the regression model:
+
+$$\text{response}_{i0} = \beta_0 + \beta_1 t_i + \epsilon_i$$
+
+To estimate the **anisotropic one-source** model, we estimate by ordinary least squares the regression model:
+
+$$\text{response}_{i1} = \beta_0 + \beta_1 t_i + \beta_2 \sin(\theta_{i1}) + \beta_3 \sin\left(\theta_{i1} + \frac{\pi}{4}\right) + \epsilon_i$$
+
+To estimate the **anisotropic two-source** model, we use the EM algorithm, treating the latent variables $Z_i$ as the missing data. First we initialize $p_i = P(Z_i = 1)$, and constrain $p_i = 1$ whenever $t_i$ is less than the day $t_0$ at which the northern source appears. Then we iteratively repeat the following steps:
+
+1. Estimate $\text{response}_{i1} = \beta_0^{(1)} + \beta_1^{(1)} t_i + \beta_2^{(1)} \sin(\theta_{i1}) + \beta_3^{(1)} \sin\left(\theta_{i1} + \frac{\pi}{4}\right) + \epsilon_i^{(1)}$ with regression weights $p_i$.
+
+2. Estimate $\text{response}_{i2} = \beta_0^{(2)} + \beta_1^{(2)} t_i + \beta_2^{(2)} \sin(\theta_{i1}) + \beta_3^{(2)} \sin\left(\theta_{i1} + \frac{\pi}{4}\right) + \epsilon_i^{(2)}$ with regression weights $1 - p_i$.
+
+3. Update $p_i$ for all $i$ such that $t_i < t_0$ using the E step update rule. 
+
+The initialization method for $p_i$ is regress an indicator of which source is closer (*i.e.*, $\mathbf{1}\{\rho_{i1} < \rho_{i2}\}$) on the exponentiated responses $\frac{\rho_{i1}}{\hat{g}_1(\theta_{i1})}$ and $\frac{\rho_{i1}}{\hat{g}_1(\theta_{i1})}$ via logistic regression, and take the fitted probabilities as the initial values for $p_i$.
+
+## Data postprocessing
+
+As a postprocessing step, the data are converted to regression format by calculating each the response variables $\text{response}_{i0}, \text{response}_{i1}, \text{response}_{i2}$, the basis expansions $\sin(\theta_{i1}), \sin\left(\theta_{i1} + \frac{\pi}{4}\right), \sin(\theta_{i2}), \sin\left(\theta_{i2} + \frac{\pi}{4}\right)$, and the variables needed for initialization. These operations are shown below for the example year 2009.
+```{r postprocess}
+# select a year
+yr <- 2009
+
+# subset data to year and calculate basis expansions and response variables
+sub_data <- filter(DATA, year(report_date) == yr) %>%
+  mutate(month = month(report_date),
+         day = day(report_date),
+         time = yday(report_date),
+         response.0 = log(1 + rho1), # response for isotropic model
+         response.1 = log(1 + rho1/g.theta.1), # response for S source
+         response.2 = log(1 + rho2/g.theta.2), # response for N source
+         sinb1.1 = sin(as.numeric(theta1)), # sin basis 1 for S source
+         sinb2.1 = sin(as.numeric(theta1) + pi/4), # sin basis 2 for S source
+         sinb1.2 = sin(as.numeric(theta2)), # sin basis 1 for N source
+         sinb2.2 = sin(as.numeric(theta2) + pi/4), # sin basis 2 for N source
+         z.reg.1 = rho1/g.theta.1, # regressor 1 to initialize weights
+         z.reg.2 = rho2/g.theta.2, # regressor 2 to initialize weights
+         z.fit = rho1 < rho2) # is southern source closer?
+```
+
+## Model fitting
+
+For model fitting, a random $80\%$ subset of the data is selected as training data and the remainder is held out as test data.
+```{r fitting1}
+set.seed(40720)
+
+# split data into training and test sets
+training_prop <- 0.8
+n <- nrow(sub_data)
+n_train <- floor(training_prop*n)
+train_idx <- sample(1:n, n_train)
+
+train_data <- sub_data[train_idx, ]
+test_data <- sub_data[-train_idx, ]
+```
+
+### Isotropic one-source
+
+The **isotropic one-source** model is fit as follows.
+```{r fitting2}
+# fit model
+fit_ios <- lm(response.0 ~ time, 
+              data = train_data)
+
+# inspect estimates
+pander(summary(fit_ios))
+```
+
+### Anisotropic one-source
+
+The **anisotropic one-source** model is fit as follows.
+```{r fitting3}
+# fit model
+fit_aos <- lm(response.1 ~ time + sinb1.1 + sinb2.1, 
+              data = train_data)
+
+# inspect estimates
+pander(summary(fit_aos))
+```
+
+### Anisotropic two-source
+
+The **anisotropic two-source** model is fit as follows. First the $p_i$'s are initialized.
+```{r fitting4.init}
+# initial value storage
+pr_z <- rep(0, length(train_idx))
+
+# determine which observations are before N source occurrence
+const_idx <- which(is.na(train_data$z.reg.2))
+update_idx <- which(!is.na(train_data$z.reg.2))
+
+# constrain weights for observations preceding N source
+pr_z[const_idx] <- 1
+
+# regress 1{S closer} on exp{response.1} and exp{response.2} for other observations
+z_glm <- glm(z.fit ~ z.reg.1 + z.reg.2, 
+             data = train_data[update_idx, ], 
+             family = binomial())
+
+
+# assign fitted probabilities for other observations
+pr_z[update_idx] <- fitted(z_glm)
+```
+
+The iterative fitting is accomplished by repeating steps 1-3 as above.
+```{r fitting4.em}
+# storage for iteration change in weights
+pr_z_diff <- 1
+
+# iteration count
+iter <- 0
+
+# repeat until convergence
+while(pr_z_diff > 0.001) {
+  # step 1: fit model 1 (S source)
+  fit_ats1 <- lm(response.1 ~ time + sinb1.1 + sinb2.1, 
+                 data = train_data,
+                 weights = pr_z)
+  
+  
+  # step 2: fit model 2 (N source)
+  fit_ats2 <- lm(response.2 ~ time + sinb1.2 + sinb2.2, 
+                 data = train_data[update_idx, ],
+                 weights = (1 - pr_z[update_idx]))
+  
+  # step 3: E step for observations occurring after N source
+  pr_z1 <- pr_z
+  mean1 <- residuals(fit_ats1)/summary(fit_ats1)$sigma 
+  mean2 <- residuals(fit_ats2)/summary(fit_ats2)$sigma
+  pr_z1[update_idx] <- (dnorm(mean1[update_idx])*pr_z[update_idx])/(dnorm(mean1[update_idx])*pr_z[update_idx] + dnorm(mean2)*(1 - pr_z[update_idx]))
+  
+  # check for convergence
+  pr_z_diff <- mean(abs(pr_z - pr_z1))
+  
+  # update weights
+  pr_z <- pr_z1
+  
+  # increment iteration count
+  iter <- iter + 1
+}
+```
+
+The estimates for each model are shown below.
+```{r fitting4.result1}
+# inspect estimates
+pander(summary(fit_ats1))
+pander(summary(fit_ats2))
+```
+
+The $p_i$'s indicate that `r round(100*sum(round(pr_z, 0) == 1)/n_train, 2)`\% of the training data (or `r sum(round(pr_z, 0) == 1)` of `r n_train` observations) were estimated as more likely due to the southern source, and `r round(100*sum(round(pr_z, 0) == 0)/n_train, 2)`\% of the training data (or `r sum(round(pr_z, 0) == 0)` of `r n_train` observations) were estimated as more likely due to the northern source.
+```{r fitting4.result2, echo = F} 
+# combine residuals from each model on training data according to whether p_i < 0.5
+resids <- train_data %>%
+  mutate(pred1 = predict(fit_ats1, train_data),
+         pred2 = predict(fit_ats2, train_data)) %>%
+  transmute(resid1 = response.1 - pred1,
+            resid2 = response.2 - pred2,
+            resp1 = response.1,
+            resp2 = response.2) %>%
+  transmute(resid = if_else(round(pr_z, 0) == 1, resid1, resid2),
+            resp = if_else(round(pr_z, 0) == 1, resp1, resp2))
+
+# compute adjusted R2
+sse <- sum(resids$resid^2)
+sst <- sum((resids$resp - mean(resids$resp))^2)
+adjR2.ats <- 1 - (sse/sst)*((n_train - 1)/(n_train - 8 - 1))
+```
+
+To obtain a single $R^2$ for the anisotropic two source model, the residuals from the southern source model for each observation where $\hat{p}_i \geq 0.5$ are combined with the residuals from the northern source model for each observation where $\hat{p}_i < 0.5$. The adjusted $R^2$ from this procedure is ```r adjR2.ats```.
+
+
+## Model comparisons: occurrence time predictions
+
+We examine predictions and fitted values of the time of occurrence according to each model. (Predictions and fitted values refer to the same quantity, but distinguish between whether it is calculated on training data or test data.) 
+
+### Prediction methods
+
+From the regression models, the observed responses, coefficient estimates, and basis expansions are all input, and the value of $t_i$ is calculated algebraically. Predictions (or fitted values) for the one-source models are simple to compute. The prediction (or fitted value) from the isotropic model is:
+
+$$\hat{t}_i = \frac{\text{response}_{i0} - \hat{\beta}_0}{\hat{\beta}_1}$$
+
+The prediction (or fitted value) from the anisotropic model is:
+
+$$\hat{t}_i = \frac{\text{response}_{i1} - \hat{\beta}_0 - \hat{\beta}_2 \sin(\theta_{i1}) - \hat{\beta}_3 \sin\left(\theta_{i1} + \frac{\pi}{4}\right)}{\hat{\beta}_1}$$
+
+The two-source anisotropic model generates *two* predictions (or fitted values): the time of disease occurrence due to spread from the southern source; and the time of disease occurrence due to spread from the northern source. These are:
+
+$$\hat{t}_i^{(1)} = \frac{\text{response}_{i1} - \hat{\beta}_0^{(1)} - \hat{\beta}_2^{(1)} \sin(\theta_{i1}) - \hat{\beta}_3^{(1)} \sin\left(\theta_{i1} + \frac{\pi}{4}\right)}{\hat{\beta}_1^{(1)}}$$
+
+and
+
+$$\hat{t}_i^{(2)} = \frac{\text{response}_{i1} - \hat{\beta}_0^{(2)} - \hat{\beta}_2^{(2)} \sin(\theta_{i1}) - \hat{\beta}_3^{(2)} \sin\left(\theta_{i1} + \frac{\pi}{4}\right)}{\hat{\beta}_1^{(2)}}$$
+
+These are calculated as follows.
+```{r predicitons1}
+# extract estimates
+betahat_ios <- coef(fit_ios)
+betahat_aos <- coef(fit_aos)
+betahat_ats1 <- coef(fit_ats1)
+betahat_ats2 <- coef(fit_ats2)
+
+# predictions of time of occurrence according to each model
+sub_data <- mutate(sub_data, 
+                   t.hat.ats1 = (response.1 - betahat_ats1[1] - betahat_ats1[3]*sinb1.1 - betahat_ats1[4]*sinb2.1)/betahat_ats1[2],
+                   t.hat.ats2 = (response.2 - betahat_ats2[1] - betahat_ats2[3]*sinb1.2 - betahat_ats2[4]*sinb2.2)/betahat_ats2[2],
+                   t.hat.aos = (response.1 - betahat_aos[1] - betahat_aos[3]*sinb1.1 - betahat_aos[4]*sinb2.1)/betahat_aos[2],
+                   t.hat.ios = (response.0 - betahat_ios[1])/betahat_ios[2]) 
+```
+
+For the two-source model, a method of combining or choosing between the two predictions (or fitted values) is needed. A few possibilities are:
+
+1. Choose the minimum of the two predicted times. 
+2. Repeat the initialization step for the $p_i$'s with the full dataset. Choose the prediction associated with the southern source if $p_i > 0.5$.
+3. Refit the model with the full dataset, but store only the $p_i$'s. Choose the prediction associated with the southern source if $p_i > 0.5$.
+```{r predictions2, echo=F}
+# choose the minimum
+sub_data <- sub_data %>%
+  mutate(t.hat.ats.min = if_else(!is.na(t.hat.ats2), 
+                                 pmin(t.hat.ats1, t.hat.ats2), 
+                                 t.hat.ats1),
+         which.pred.ats.min = if_else(is.na(t.hat.ats2), 
+                                      1, 
+                                      2*as.numeric(t.hat.ats1 > t.hat.ats2) + 1*as.numeric(t.hat.ats1 < t.hat.ats2)))
+
+# use initialization values
+const_idx_full <- which(is.na(sub_data$z.reg.2))
+update_idx_full <- which(!is.na(sub_data$z.reg.2))
+z_glm_full <- glm(z.fit ~ z.reg.1 + z.reg.2, 
+             data = sub_data[update_idx_full, ], 
+             family = binomial())
+pr_z_full <- rep(0, n)
+pr_z_full[const_idx_full] <- 1
+pr_z_full[update_idx_full] <- fitted(z_glm_full)
+which_pred_ats_init <- round(pr_z_full, 0) + (round(pr_z_full, 0) == 0)*2
+
+sub_data <- cbind(sub_data,
+                  which.pred.ats.init = which_pred_ats_init) %>%
+  mutate(t.hat.ats.init = if_else(which.pred.ats.init == 1, 
+                                  t.hat.ats1, 
+                                  t.hat.ats2))
+
+# refit and use p_i's
+pr_z0_full <- pr_z_full
+pr_z_diff_full <- 1
+iter_full <- 0
+while(pr_z_diff_full > 0.001) {
+  # step 1: fit model 1 (S source)
+  fit_ats1_full <- lm(response.1 ~ time + sinb1.1 + sinb2.1, 
+                 data = sub_data,
+                 weights = pr_z0_full)
+  
+  
+  # step 2: fit model 2 (N source)
+  fit_ats2_full <- lm(response.2 ~ time + sinb1.2 + sinb2.2, 
+                 data = sub_data[update_idx_full, ],
+                 weights = (1 - pr_z0_full[update_idx_full]))
+  
+  # step 3: E step for observations occurring after N source
+  pr_z1_full <- pr_z0_full
+  mean1 <- residuals(fit_ats1_full)/summary(fit_ats1_full)$sigma 
+  mean2 <- residuals(fit_ats2_full)/summary(fit_ats2_full)$sigma
+  pr_z1_full[update_idx_full] <- (dnorm(mean1[update_idx_full])*pr_z0_full[update_idx_full])/(dnorm(mean1[update_idx_full])*pr_z0_full[update_idx_full] + dnorm(mean2)*(1 - pr_z0_full[update_idx_full]))
+  
+  # check for convergence
+  pr_z_diff_full <- mean(abs(pr_z0_full - pr_z1_full))
+  
+  # update weights
+  pr_z0_full <- pr_z1_full
+  
+  # increment iteration count
+  iter_full <- iter_full + 1
+}
+
+which_pred_ats_refit <- round(pr_z0_full, 0) + (round(pr_z0_full, 0) == 0)*2
+sub_data <- cbind(sub_data,
+                  which.pred.ats.refit = which_pred_ats_refit) %>%
+  mutate(t.hat.ats.refit = if_else(which.pred.ats.refit == 1, 
+                                  t.hat.ats1, 
+                                  t.hat.ats2))
+```
+
+Plots of the fitted times against observed times on the training data (left) and predicted times against observed times on the test data (right) are shown below for the **minimum** method. The solid line indicates equality (perfect prediction). The bands indicate an error of three weeks; any points outside of the bands have time prediction errors exceeding three weeks. Red points are predicted according to the model associated with the northern source.
+```{r predictionPlot1, echo = F}
+layout(matrix(1:2, nrow = 1, byrow = T))
+plot(sub_data[train_idx, ]$time, sub_data[train_idx, ]$t.hat.ats.min,
+     xlab = 'Day of year of actual occurrence', ylab = 'Predicted day of year',
+     main = paste('Minimum method (training data)'),
+     col = sub_data$which.pred.ats.min,
+     xlim = c(100, 220),
+     ylim = c(50, 300))
+abline(b = 1, a = 0)
+abline(b = 1, a = 21, lty = 2, col = 4)
+abline(b = 1, a = -21, lty = 2, col = 4)
+
+
+plot(sub_data[-train_idx, ]$time, sub_data[-train_idx, ]$t.hat.ats.min,
+     xlab = 'Day of year of actual occurrence', ylab = 'Predicted day of year',
+     main = paste('Minimum method (test data)'),
+     col = sub_data$which.pred.ats.min[-train_idx],
+     xlim = c(100, 220),
+     ylim = c(50, 300))
+abline(b = 1, a = 0)
+abline(b = 1, a = 21, lty = 2, col = 4)
+abline(b = 1, a = -21, lty = 2, col = 4)
+```
+
+The same plots for the **initialization** method are shown below.
+```{r predictionPlot2, echo = F}
+layout(matrix(1:2, nrow = 1, byrow = T))
+plot(sub_data[train_idx, ]$time, sub_data[train_idx, ]$t.hat.ats.init,
+     xlab = 'Day of year of actual occurrence', ylab = 'Predicted day of year',
+     main = paste('Initialization method (training data)'),
+     col = sub_data$which.pred.ats.init,
+     xlim = c(100, 220),
+     ylim = c(50, 300))
+abline(b = 1, a = 0)
+abline(b = 1, a = 21, lty = 2, col = 4)
+abline(b = 1, a = -21, lty = 2, col = 4)
+
+
+plot(sub_data[-train_idx, ]$time, sub_data[-train_idx, ]$t.hat.ats.init,
+     xlab = 'Day of year of actual occurrence', ylab = 'Predicted day of year',
+     main = paste('Initialization method (test data)'),
+     col = sub_data$which.pred.ats.init[-train_idx],
+     xlim = c(100, 220),
+     ylim = c(50, 300))
+abline(b = 1, a = 0)
+abline(b = 1, a = 21, lty = 2, col = 4)
+abline(b = 1, a = -21, lty = 2, col = 4)
+```
+
+Lastly, the same plots for the **refit** method are shown below.
+```{r predictionPlot3, echo = F}
+layout(matrix(1:2, nrow = 1, byrow = T))
+plot(sub_data[train_idx, ]$time, sub_data[train_idx, ]$t.hat.ats.refit,
+     xlab = 'Day of year of actual occurrence', ylab = 'Predicted day of year',
+     main = paste('Refit method (training data)'),
+     col = sub_data$which.pred.ats.refit,
+     xlim = c(100, 220),
+     ylim = c(50, 300))
+abline(b = 1, a = 0)
+abline(b = 1, a = 21, lty = 2, col = 4)
+abline(b = 1, a = -21, lty = 2, col = 4)
+
+
+plot(sub_data[-train_idx, ]$time, sub_data[-train_idx, ]$t.hat.ats.refit,
+     xlab = 'Day of year of actual occurrence', ylab = 'Predicted day of year',
+     main = paste('Refit method (test data)'),
+     col = sub_data$which.pred.ats.refit[-train_idx],
+     xlim = c(100, 220),
+     ylim = c(50, 300))
+abline(b = 1, a = 0)
+abline(b = 1, a = 21, lty = 2, col = 4)
+abline(b = 1, a = -21, lty = 2, col = 4)
+```
+
+The refit method clearly generates the best fit and predictions, as almost all points are within the three week bands.
+
+### Prediction comparison
+
+Now, a comparison of the fitted values from the three models (using the "refit" predictions for the anisotropic two-source model) is shown below. The following acronyms are used for the models: IOS for isotropic one source; AOS for anisotropic one source; and ATS for anisotropic two source. The root mean squared residuals are ```r sub_data[train_idx, ] %>% transmute(sq.resid = (t.hat.ios - time)^2) %>% apply(2, mean) %>% sqrt()``` for IOS, ```r sub_data[train_idx, ] %>% transmute(sq.resid = (t.hat.aos - time)^2) %>% apply(2, mean) %>% sqrt()``` for AOS, and ```r sub_data[train_idx, ] %>% transmute(sq.resid = (t.hat.ats.refit - time)^2) %>% apply(2, mean) %>% sqrt()``` for ATS.
+```{r predictionPlot4, echo = F}
+layout(matrix(1:3, nrow = 1, byrow = T))
+plot(sub_data[train_idx, ]$time, sub_data[train_idx, ]$t.hat.ios,
+     xlab = 'Day of year of actual occurrence', ylab = 'Predicted day of year',
+     main = paste('Fitted values from IOS model'),
+     xlim = c(100, 220),
+     ylim = c(50, 300))
+abline(b = 1, a = 0)
+abline(b = 1, a = 21, lty = 2, col = 4)
+abline(b = 1, a = -21, lty = 2, col = 4)
+
+plot(sub_data[train_idx, ]$time, sub_data[train_idx, ]$t.hat.aos,
+     xlab = 'Day of year of actual occurrence', ylab = 'Predicted day of year',
+     main = paste('Fitted values from IOS model'),
+     xlim = c(100, 220),
+     ylim = c(50, 300))
+abline(b = 1, a = 0)
+abline(b = 1, a = 21, lty = 2, col = 4)
+abline(b = 1, a = -21, lty = 2, col = 4)
+
+plot(sub_data[train_idx, ]$time, sub_data[train_idx, ]$t.hat.ats.refit,
+     xlab = 'Day of year of actual occurrence', ylab = 'Predicted day of year',
+     main = paste('Fitted values from ATS model'),
+     col = sub_data$which.pred.ats.refit[train_idx],
+     xlim = c(100, 220),
+     ylim = c(50, 300))
+abline(b = 1, a = 0)
+abline(b = 1, a = 21, lty = 2, col = 4)
+abline(b = 1, a = -21, lty = 2, col = 4)
+```
+
+An analogous comparison of the predictions from the three models is shown below. The root mean squared prediction errors are ```r sub_data[-train_idx, ] %>% transmute(sq.resid = (t.hat.ios - time)^2) %>% apply(2, mean) %>% sqrt()``` for IOS, ```r sub_data[-train_idx, ] %>% transmute(sq.resid = (t.hat.aos - time)^2) %>% apply(2, mean) %>% sqrt()``` for AOS, and ```r sub_data[-train_idx, ] %>% transmute(sq.resid = (t.hat.ats.refit - time)^2) %>% apply(2, mean) %>% sqrt()``` for ATS.
+```{r predictionPlot5, echo = F}
+layout(matrix(1:3, nrow = 1, byrow = T))
+plot(sub_data[-train_idx, ]$time, sub_data[-train_idx, ]$t.hat.ios,
+     xlab = 'Day of year of actual occurrence', ylab = 'Predicted day of year',
+     main = paste('Predicted from IOS model'),
+     xlim = c(100, 220),
+     ylim = c(50, 300))
+abline(b = 1, a = 0)
+abline(b = 1, a = 21, lty = 2, col = 4)
+abline(b = 1, a = -21, lty = 2, col = 4)
+
+plot(sub_data[-train_idx, ]$time, sub_data[-train_idx, ]$t.hat.aos,
+     xlab = 'Day of year of actual occurrence', ylab = 'Predicted day of year',
+     main = paste('Predictions from AOS model'),
+     xlim = c(100, 220),
+     ylim = c(50, 300))
+abline(b = 1, a = 0)
+abline(b = 1, a = 21, lty = 2, col = 4)
+abline(b = 1, a = -21, lty = 2, col = 4)
+
+plot(sub_data[-train_idx, ]$time, sub_data[-train_idx, ]$t.hat.ats.refit,
+     xlab = 'Day of year of actual occurrence', ylab = 'Predicted day of year',
+     main = paste('Predictions from ATS model'),
+     col = sub_data$which.pred.ats.refit[-train_idx],
+     xlim = c(100, 220),
+     ylim = c(50, 300))
+abline(b = 1, a = 0)
+abline(b = 1, a = 21, lty = 2, col = 4)
+abline(b = 1, a = -21, lty = 2, col = 4)
+```
+
+<!-- ### Fit and prediction by host type -->
+
+<!-- The following plots give the same comparisons as above, only now the points are colored according to host type. -->
+
+<!-- ```{r predictionPlot6, echo = F} -->
+<!-- layout(matrix(1:3, nrow = 1, byrow = T)) -->
+<!-- plot(sub_data[train_idx, ]$time, sub_data[train_idx, ]$t.hat.ios, -->
+<!--      xlab = 'Day of year of actual occurrence', ylab = 'Predicted day of year', -->
+<!--      main = paste('Predicted from IOS model'), -->
+<!--      xlim = c(100, 220), -->
+<!--      ylim = c(50, 300), -->
+<!--      col = sub_data$host[train_idx]) -->
+<!-- abline(b = 1, a = 0) -->
+<!-- abline(b = 1, a = 21, lty = 2, col = 4) -->
+<!-- abline(b = 1, a = -21, lty = 2, col = 4) -->
+<!-- legend() -->
+
+<!-- plot(sub_data[train_idx, ]$time, sub_data[train_idx, ]$t.hat.aos, -->
+<!--      xlab = 'Day of year of actual occurrence', ylab = 'Predicted day of year', -->
+<!--      main = paste('Predictions from AOS model'), -->
+<!--      xlim = c(100, 220), -->
+<!--      ylim = c(50, 300), -->
+<!--      col = sub_data$host[train_idx]) -->
+<!-- abline(b = 1, a = 0) -->
+<!-- abline(b = 1, a = 21, lty = 2, col = 4) -->
+<!-- abline(b = 1, a = -21, lty = 2, col = 4) -->
+
+<!-- plot(sub_data[train_idx, ]$time, sub_data[train_idx, ]$t.hat.ats.refit, -->
+<!--      xlab = 'Day of year of actual occurrence', ylab = 'Predicted day of year', -->
+<!--      main = paste('Predictions from ATS model'), -->
+<!--      col = sub_data$host[train_idx], -->
+<!--      xlim = c(100, 220), -->
+<!--      ylim = c(50, 300)) -->
+<!-- abline(b = 1, a = 0) -->
+<!-- abline(b = 1, a = 21, lty = 2, col = 4) -->
+<!-- abline(b = 1, a = -21, lty = 2, col = 4) -->
+<!-- ``` -->
+
+<!-- ```{r predictionPlot7, echo = F} -->
+<!-- layout(matrix(1:3, nrow = 1, byrow = T)) -->
+<!-- plot(sub_data[-train_idx, ]$time, sub_data[-train_idx, ]$t.hat.ios, -->
+<!--      xlab = 'Day of year of actual occurrence', ylab = 'Predicted day of year', -->
+<!--      main = paste('Predicted from IOS model'), -->
+<!--      xlim = c(100, 220), -->
+<!--      ylim = c(50, 300), -->
+<!--      col = sub_data$host[-train_idx]) -->
+<!-- abline(b = 1, a = 0) -->
+<!-- abline(b = 1, a = 21, lty = 2, col = 4) -->
+<!-- abline(b = 1, a = -21, lty = 2, col = 4) -->
+
+<!-- plot(sub_data[-train_idx, ]$time, sub_data[-train_idx, ]$t.hat.aos, -->
+<!--      xlab = 'Day of year of actual occurrence', ylab = 'Predicted day of year', -->
+<!--      main = paste('Predictions from AOS model'), -->
+<!--      xlim = c(100, 220), -->
+<!--      ylim = c(50, 300), -->
+<!--      col = sub_data$host[-train_idx]) -->
+<!-- abline(b = 1, a = 0) -->
+<!-- abline(b = 1, a = 21, lty = 2, col = 4) -->
+<!-- abline(b = 1, a = -21, lty = 2, col = 4) -->
+
+<!-- plot(sub_data[-train_idx, ]$time, sub_data[-train_idx, ]$t.hat.ats.refit, -->
+<!--      xlab = 'Day of year of actual occurrence', ylab = 'Predicted day of year', -->
+<!--      main = paste('Predictions from ATS model'), -->
+<!--      col = sub_data$host[-train_idx], -->
+<!--      xlim = c(100, 220), -->
+<!--      ylim = c(50, 300)) -->
+<!-- abline(b = 1, a = 0) -->
+<!-- abline(b = 1, a = 21, lty = 2, col = 4) -->
+<!-- abline(b = 1, a = -21, lty = 2, col = 4) -->
+<!-- ``` -->
+
+## Further comparisons: understanding estimated prediction errors
+
+In the foregoing, the anisotropic two source model fits the training data best and the isotropic model gives the lowest prediction error. Why?
+
+### Repeated training/test splits
+
+I hypothesize that the results are sensitive to the choice of training and testing data. To support this hypothesis, I repeat the *entire* process above with new choices of training and testing data 50 times, and look at the average RMSE on training and test data among these 50 repetitions and, more importantly, the standard deviation of RMSE on training and test data among the 50 repetitions.
+```{r repetitions, cache=T, echo=F, warning=F, message=F}
+# repeat entire process above for various training/test splits
+nReps <- 50
+out <- Reduce(rbind, lapply(1:nReps, function(rep){
+# new split of data into training and test sets
+train_idx <- sample(1:n, n_train)
+
+train_data <- sub_data[train_idx, ]
+test_data <- sub_data[-train_idx, ]
+
+## ----fitting2------------------------------------------------------------
+# fit model
+fit_ios <- lm(response.0 ~ time, 
+              data = train_data)
+
+## ----fitting3------------------------------------------------------------
+# fit model
+fit_aos <- lm(response.1 ~ time + sinb1.1 + sinb2.1, 
+              data = train_data)
+
+## ----fitting4.init-------------------------------------------------------
+# initial value storage
+pr_z <- rep(0, length(train_idx))
+
+# determine which observations are before N source occurrence
+const_idx <- which(is.na(train_data$z.reg.2))
+update_idx <- which(!is.na(train_data$z.reg.2))
+
+# constrain weights for observations preceding N source
+pr_z[const_idx] <- 1
+
+# regress 1{S closer} on exp{response.1} and exp{response.2} for other observations
+z_glm <- glm(z.fit ~ z.reg.1 + z.reg.2, 
+             data = train_data[update_idx, ], 
+             family = binomial())
+
+
+# assign fitted probabilities for other observations
+pr_z[update_idx] <- fitted(z_glm)
+
+## ----fitting4.em---------------------------------------------------------
+# storage for iteration change in weights
+pr_z_diff <- 1
+
+# iteration count
+iter <- 0
+
+# repeat until convergence
+while(pr_z_diff > 0.001) {
+  # step 1: fit model 1 (S source)
+  fit_ats1 <- lm(response.1 ~ time + sinb1.1 + sinb2.1, 
+                 data = train_data,
+                 weights = pr_z)
+  
+  
+  # step 2: fit model 2 (N source)
+  fit_ats2 <- lm(response.2 ~ time + sinb1.2 + sinb2.2, 
+                 data = train_data[update_idx, ],
+                 weights = (1 - pr_z[update_idx]))
+  
+  # step 3: E step for observations occurring after N source
+  pr_z1 <- pr_z
+  mean1 <- residuals(fit_ats1)/summary(fit_ats1)$sigma 
+  mean2 <- residuals(fit_ats2)/summary(fit_ats2)$sigma
+  pr_z1[update_idx] <- (dnorm(mean1[update_idx])*pr_z[update_idx])/(dnorm(mean1[update_idx])*pr_z[update_idx] + dnorm(mean2)*(1 - pr_z[update_idx]))
+  
+  # check for convergence
+  pr_z_diff <- mean(abs(pr_z - pr_z1))
+  
+  # update weights
+  pr_z <- pr_z1
+  
+  # increment iteration count
+  iter <- iter + 1
+}
+
+## ----predicitons1--------------------------------------------------------
+# extract estimates
+betahat_ios <- coef(fit_ios)
+betahat_aos <- coef(fit_aos)
+betahat_ats1 <- coef(fit_ats1)
+betahat_ats2 <- coef(fit_ats2)
+
+# predictions of time of occurrence according to each model
+pred_df <- transmute(sub_data, 
+                   t.hat.ats1 = (response.1 - betahat_ats1[1] - betahat_ats1[3]*sinb1.1 - betahat_ats1[4]*sinb2.1)/betahat_ats1[2],
+                   t.hat.ats2 = (response.2 - betahat_ats2[1] - betahat_ats2[3]*sinb1.2 - betahat_ats2[4]*sinb2.2)/betahat_ats2[2],
+                   t.hat.aos = (response.1 - betahat_aos[1] - betahat_aos[3]*sinb1.1 - betahat_aos[4]*sinb2.1)/betahat_aos[2],
+                   t.hat.ios = (response.0 - betahat_ios[1])/betahat_ios[2],
+                  time = time)
+
+# refit and use p_i's
+pr_z0_full <- pr_z_full
+pr_z_diff_full <- 1
+iter_full <- 0
+while(pr_z_diff_full > 0.001) {
+  # step 1: fit model 1 (S source)
+  fit_ats1_full <- lm(response.1 ~ time + sinb1.1 + sinb2.1, 
+                 data = sub_data,
+                 weights = pr_z0_full)
+  
+  
+  # step 2: fit model 2 (N source)
+  fit_ats2_full <- lm(response.2 ~ time + sinb1.2 + sinb2.2, 
+                 data = sub_data[update_idx_full, ],
+                 weights = (1 - pr_z0_full[update_idx_full]))
+  
+  # step 3: E step for observations occurring after N source
+  pr_z1_full <- pr_z0_full
+  mean1 <- residuals(fit_ats1_full)/summary(fit_ats1_full)$sigma 
+  mean2 <- residuals(fit_ats2_full)/summary(fit_ats2_full)$sigma
+  pr_z1_full[update_idx_full] <- (dnorm(mean1[update_idx_full])*pr_z0_full[update_idx_full])/(dnorm(mean1[update_idx_full])*pr_z0_full[update_idx_full] + dnorm(mean2)*(1 - pr_z0_full[update_idx_full]))
+  
+  # check for convergence
+  pr_z_diff_full <- mean(abs(pr_z0_full - pr_z1_full))
+  
+  # update weights
+  pr_z0_full <- pr_z1_full
+  
+  # increment iteration count
+  iter_full <- iter_full + 1
+}
+
+which_pred_ats_refit <- round(pr_z0_full, 0) + (round(pr_z0_full, 0) == 0)*2
+pred_df <- cbind(pred_df,
+                  which.pred.ats.refit = which_pred_ats_refit) %>%
+  mutate(t.hat.ats.refit = if_else(which.pred.ats.refit == 1, 
+                                  t.hat.ats1, 
+                                  t.hat.ats2),
+         rep.num = rep) %>%
+  rename(t.hat.ats = t.hat.ats.refit,
+         which.pred.ats = which.pred.ats.refit) %>%
+  select(rep.num,
+         time, 
+         t.hat.ios, 
+         t.hat.aos, 
+         t.hat.ats, 
+         which.pred.ats) %>%
+  rename(ios = t.hat.ios,
+         aos = t.hat.aos,
+         ats = t.hat.ats)
+
+pred_df$subset <- 'test data'
+pred_df$subset[train_idx] <- 'training data'
+
+return(pred_df)
+}))
+```
+
+The table below shows the mean RMSE ('m.rmse.[]') and standard deviation of RMSE ('sd.rmse.[]') across the 50 different training/test splits for each model on training data and testing data. Note that the variability is high for the anisotropic models.
+```{r repMSE, echo = F}
+# MSE by rep
+out %>%
+  mutate(sq.resid.ios = (time - ios)^2,
+         sq.resid.aos = (time - aos)^2,
+         sq.resid.ats = (time - ats)^2) %>%
+  group_by(rep.num, subset) %>%
+  summarize(rmse.ios = sqrt(mean(sq.resid.ios)),
+            rmse.aos = sqrt(mean(sq.resid.aos)),
+            rmse.ats = sqrt(mean(sq.resid.ats))) %>%
+  ungroup() %>%
+  group_by(subset) %>%
+  summarize(m.rmse.ios = mean(rmse.ios),
+            m.rmse.aos = mean(rmse.aos),
+            m.rmse.ats = mean(rmse.ats),
+            sd.rmse.ios = sd(rmse.ios),
+            sd.rmse.aos = sd(rmse.aos),
+            sd.rmse.ats = sd(rmse.ats)) %>%
+  pander()
+```
+
+We can visualize this variability by animating frames that plot the predictions (or fitted values) against observed times for each model. This is shown below.
+```{r animation, cache = T, echo = F, warning = F, message = F}
+out_plot <- gather(out, "pred", "t.hat", 3:5)
+ggplot(out_plot,
+       aes(x = time,
+           y = t.hat,
+           color = subset)) +
+  geom_point() +
+  geom_abline(slope = rep(1, 3),
+              intercept = c(-21, 0, 21),
+              alpha = 0.5) +
+  facet_wrap(~subset + pred) +
+  xlim(c(0, 300)) +
+  ylim(c(0, 300)) +
+  transition_states(rep.num) +
+  ggtitle('Repetition number {closest_state}') +
+  enter_fade() +
+  exit_fade()
+```
+
+Finally, the following table indicates the proportion of repetitions for which each model had the lowest RMSE, and shows that each model does best on both training data and testing data at least some of the time. With respect to fit, the anisotropic two source model is best for about 90\% of the repetitions. However, it gives the lowest prediction error for only about 50\% of the repetitions; in the other cases the isotropic model generally does best.
+```{r bestcounts, echo = F}
+out %>%
+  mutate(sq.resid.ios = (time - ios)^2,
+         sq.resid.aos = (time - aos)^2,
+         sq.resid.ats = (time - ats)^2) %>%
+  group_by(rep.num, subset) %>%
+  summarize(rmse.ios = sqrt(mean(sq.resid.ios)),
+            rmse.aos = sqrt(mean(sq.resid.aos)),
+            rmse.ats = sqrt(mean(sq.resid.ats))) %>%
+  mutate(lowest.rmse = pmin(rmse.ios, rmse.aos, rmse.ats)) %>%
+  mutate(ios.best = (lowest.rmse == rmse.ios),
+         aos.best = (lowest.rmse == rmse.aos),
+         ats.best = (lowest.rmse == rmse.ats)) %>%
+  select(rep.num, 
+         subset, 
+         ios.best,
+         aos.best,
+         ats.best) %>%
+  ungroup() %>%
+  group_by(subset) %>%
+  summarize(ios.best = mean(ios.best),
+            aos.best = mean(aos.best),
+            ats.best = mean(ats.best)) %>%
+  pander()
+```
+
+## Sensitivity of ATS model to northern source location and time
+```{r sensitivity, echo = F, warning = F, message = F, cache = T}
+source('two_source_preprocessing_fn.R')
+seed <- 40820
+nreps <- 20
+
+out <- Reduce(rbind, lapply(1:nreps, function(rep){
+  out_inner <- Reduce(rbind, lapply(0:1, function(loc){
+    Reduce(rbind, lapply(25:30, function(w){
+      ## ----preprocess, warning=F, message=F------------------------------------
+      set.seed(seed + rep)
+      wk <- w # week of year at which N source appears
+      MI <- loc # N source location (1 = MI, 0 = NY)
+      DATA <- preprocess_fn(wk, MI)
+      rm(list = setdiff(ls(), c("DATA", "MI", "wk")))
+      
+      ## ----postprocess---------------------------------------------------------
+      # select a year
+      yr <- 2009
+      
+      # subset data to year and calculate basis expansions and response variables
+      sub_data <- filter(DATA, year(report_date) == yr) %>%
+        mutate(month = month(report_date),
+               day = day(report_date),
+               time = yday(report_date),
+               response.0 = log(1 + rho1), # response for isotropic model
+               response.1 = log(1 + rho1/g.theta.1), # response for S source
+               response.2 = log(1 + rho2/g.theta.2), # response for N source
+               sinb1.1 = sin(as.numeric(theta1)), # sin basis 1 for S source
+               sinb2.1 = sin(as.numeric(theta1) + pi/4), # sin basis 2 for S source
+               sinb1.2 = sin(as.numeric(theta2)), # sin basis 1 for N source
+               sinb2.2 = sin(as.numeric(theta2) + pi/4), # sin basis 2 for N source
+               z.reg.1 = rho1/g.theta.1, # regressor 1 to initialize weights
+               z.reg.2 = rho2/g.theta.2, # regressor 2 to initialize weights
+               z.fit = rho1 < rho2) # is southern source closer?
+      
+      # split data into training and test sets
+      n <- nrow(sub_data)
+      n_train <- floor(0.8*n)
+      train_idx <- sample(1:n, n_train)
+      
+      train_data <- sub_data[train_idx, ]
+      test_data <- sub_data[-train_idx, ]
+      
+      ## ----fitting2------------------------------------------------------------
+      # fit model
+      fit_ios <- lm(response.0 ~ time, 
+                    data = train_data)
+      
+      ## ----fitting3------------------------------------------------------------
+      # fit model
+      fit_aos <- lm(response.1 ~ time + sinb1.1 + sinb2.1, 
+                    data = train_data)
+      
+      ## ----fitting4.init-------------------------------------------------------
+      # initial value storage
+      pr_z <- rep(0, length(train_idx))
+      
+      # determine which observations are before N source occurrence
+      const_idx <- which(is.na(train_data$z.reg.2))
+      update_idx <- which(!is.na(train_data$z.reg.2))
+      
+      # constrain weights for observations preceding N source
+      pr_z[const_idx] <- 1
+      
+      # regress 1{S closer} on exp{response.1} and exp{response.2} for other observations
+      z_glm <- glm(z.fit ~ z.reg.1 + z.reg.2, 
+                   data = train_data[update_idx, ], 
+                   family = binomial())
+      
+      
+      # assign fitted probabilities for other observations
+      pr_z[update_idx] <- fitted(z_glm)
+      
+      ## ----fitting4.em---------------------------------------------------------
+      # storage for iteration change in weights
+      pr_z_diff <- 1
+      
+      # iteration count
+      iter <- 0
+      
+      # repeat until convergence
+      while(pr_z_diff > 0.001) {
+        # step 1: fit model 1 (S source)
+        fit_ats1 <- lm(response.1 ~ time + sinb1.1 + sinb2.1, 
+                       data = train_data,
+                       weights = pr_z)
+        
+        
+        # step 2: fit model 2 (N source)
+        fit_ats2 <- lm(response.2 ~ time + sinb1.2 + sinb2.2, 
+                       data = train_data[update_idx, ],
+                       weights = (1 - pr_z[update_idx]))
+        
+        # step 3: E step for observations occurring after N source
+        pr_z1 <- pr_z
+        mean1 <- residuals(fit_ats1)/summary(fit_ats1)$sigma 
+        mean2 <- residuals(fit_ats2)/summary(fit_ats2)$sigma
+        pr_z1[update_idx] <- (dnorm(mean1[update_idx])*pr_z[update_idx])/(dnorm(mean1[update_idx])*pr_z[update_idx] + dnorm(mean2)*(1 - pr_z[update_idx]))
+        
+        # check for convergence
+        pr_z_diff <- mean(abs(pr_z - pr_z1))
+        
+        # update weights
+        pr_z <- pr_z1
+        
+        # increment iteration count
+        iter <- iter + 1
+      }
+      
+      resids <- train_data %>%
+        mutate(pred1 = predict(fit_ats1, train_data),
+               pred2 = predict(fit_ats2, train_data)) %>%
+        transmute(resid1 = response.1 - pred1,
+                  resid2 = response.2 - pred2,
+                  resp1 = response.1,
+                  resp2 = response.2) %>%
+        transmute(resid = if_else(round(pr_z, 0) == 1, resid1, resid2),
+                  resp = if_else(round(pr_z, 0) == 1, resp1, resp2))
+      
+      # compute adjusted R2
+      sse <- sum(resids$resid^2)
+      sst <- sum((resids$resp - mean(resids$resp))^2)
+      rsq.ats <- 1 - (sse/sst)*((n_train - 1)/(n_train - 8 - 1))
+      
+      
+      ## ----predicitons1--------------------------------------------------------
+      # extract estimates
+      betahat_ios <- coef(fit_ios)
+      betahat_aos <- coef(fit_aos)
+      betahat_ats1 <- coef(fit_ats1)
+      betahat_ats2 <- coef(fit_ats2)
+      
+      # refit and use p_i's
+      const_idx_full <- which(is.na(sub_data$z.reg.2))
+      update_idx_full <- which(!is.na(sub_data$z.reg.2))
+      z_glm_full <- glm(z.fit ~ z.reg.1 + z.reg.2, 
+                        data = sub_data[update_idx_full, ], 
+                        family = binomial())
+      pr_z_full <- rep(0, n)
+      pr_z_full[const_idx_full] <- 1
+      pr_z_full[update_idx_full] <- fitted(z_glm_full)
+      pr_z0_full <- pr_z_full
+      pr_z_diff_full <- 1
+      iter_full <- 0
+      while(pr_z_diff_full > 0.001) {
+        # step 1: fit model 1 (S source)
+        fit_ats1_full <- lm(response.1 ~ time + sinb1.1 + sinb2.1, 
+                            data = sub_data,
+                            weights = pr_z0_full)
+        
+        
+        # step 2: fit model 2 (N source)
+        fit_ats2_full <- lm(response.2 ~ time + sinb1.2 + sinb2.2, 
+                            data = sub_data[update_idx_full, ],
+                            weights = (1 - pr_z0_full[update_idx_full]))
+        
+        # step 3: E step for observations occurring after N source
+        pr_z1_full <- pr_z0_full
+        mean1 <- residuals(fit_ats1_full)/summary(fit_ats1_full)$sigma 
+        mean2 <- residuals(fit_ats2_full)/summary(fit_ats2_full)$sigma
+        pr_z1_full[update_idx_full] <- (dnorm(mean1[update_idx_full])*pr_z0_full[update_idx_full])/(dnorm(mean1[update_idx_full])*pr_z0_full[update_idx_full] + dnorm(mean2)*(1 - pr_z0_full[update_idx_full]))
+        
+        # check for convergence
+        pr_z_diff_full <- mean(abs(pr_z0_full - pr_z1_full))
+        
+        # update weights
+        pr_z0_full <- pr_z1_full
+        
+        # increment iteration count
+        iter_full <- iter_full + 1
+      }
+      
+      # predictions of time of occurrence according to each model
+      pred_df <- transmute(sub_data, 
+                           t.hat.ats1 = (response.1 - betahat_ats1[1] - betahat_ats1[3]*sinb1.1 - betahat_ats1[4]*sinb2.1)/betahat_ats1[2],
+                           t.hat.ats2 = (response.2 - betahat_ats2[1] - betahat_ats2[3]*sinb1.2 - betahat_ats2[4]*sinb2.2)/betahat_ats2[2],
+                           t.hat.aos = (response.1 - betahat_aos[1] - betahat_aos[3]*sinb1.1 - betahat_aos[4]*sinb2.1)/betahat_aos[2],
+                           t.hat.ios = (response.0 - betahat_ios[1])/betahat_ios[2],
+                           time = time)
+      
+      which_pred_ats_refit <- round(pr_z0_full, 0) + (round(pr_z0_full, 0) == 0)*2
+      pred_df <- cbind(pred_df,
+                       which.pred.ats.refit = which_pred_ats_refit) %>%
+        mutate(t.hat.ats.refit = if_else(which.pred.ats.refit == 1, 
+                                         t.hat.ats1, 
+                                         t.hat.ats2)) %>%
+        rename(t.hat.ats = t.hat.ats.refit,
+               which.pred.ats = which.pred.ats.refit) %>%
+        select(time, 
+               t.hat.ats) %>%
+        rename(ats = t.hat.ats) 
+      
+      pred_df$subset <- 'test'
+      pred_df$subset[train_idx] <- 'training'
+      
+      out <- pred_df %>%
+        mutate(sq.resid.ats = (time - ats)^2) %>%
+        group_by(subset) %>%
+        summarize(ats = sqrt(mean(sq.resid.ats))) %>%
+        spread(subset, ats) %>%
+        mutate(rsq = rsq.ats,
+               week = wk,
+               loc = MI,
+               rep.num = rep) 
+      
+      return(out)
+    }))
+  }))
+}))
+```
+
+The above choice of location and time was best in terms of fit and prediction among all weeks 25--30 and both locations in NY and MI. The following table indicates the average time prediction RMSE on training and test sets across 20 training/test splits and the average adjusted $R^2% for each combination of week and location.
+```{r sensitivity2, echo = F}
+out %>%
+  group_by(week, loc) %>%
+  summarize(meanRmseTest = mean(test),
+            meanRmseTrain = mean(training),
+            meanAdjR2 = mean(rsq)) %>%
+  arrange(loc, week) %>%
+  pander()
+```
