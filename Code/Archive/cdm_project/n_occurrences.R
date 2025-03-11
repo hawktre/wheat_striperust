@@ -5,7 +5,7 @@ library(geosphere)
 library(housingData)
 library(circular)
 
-load('cdm_data.RData')
+load(here("Code/Archive/cdm_project/cdm_data.RData"))
 data <- as_tibble(data)
 sub_data <- data %>%
   filter(# planting == 'sentinel',
@@ -25,11 +25,12 @@ sub_data <- data %>%
   arrange(symptom.date)
 
 
+
 lonrange <- range(sub_data$long)
 latrange <- range(sub_data$lat)
 mapbox <- make_bbox(lonrange, latrange)
 map <- get_map(location = mapbox,
-               maptype = 'toner-background')
+               maptype = 'stamen_toner')
 
 ggmap(map, darken = c(0.3, 'white')) +
   geom_point(data = sub_data,

@@ -1,3 +1,5 @@
+library(here)
+setwd(here("Code/Archive/cdm_project/"))
 source('preprocess_fn_v2.R')
 source('fit_twosource_fn.R')
 source('estimate_fn.R')
@@ -7,7 +9,8 @@ library(xtable)
 preprocess_out <- preprocess_fn()
 DATA <- preprocess_out$data 
 
-# select year
+# select
+year
 yrs <- 2008:2010 # possible years
 j <- 2
 

@@ -1,0 +1,108 @@
+---
+title: "Spread of Wheat Stripe Rust in an Experimental Framework"
+su\phi(1-\mu)title: "Modeling Considerations"
+author:   
+  - name: Trent VanHawkins
+    affiliations:
+      - ref: osu
+    degrees: MS
+    corresponding: true
+  - name: Christopher Mundt
+    affiliations:
+      - ref: osu
+    degrees: PhD
+  - name: David Gent
+    affiliations:
+      - ref: usda
+      - ref: osu
+    degrees: PhD
+  - name: Shirshendu Chatterjee
+    affiliations:
+      - ref: nyu
+  - name: Sharmodeep Bhattacharyya
+    affiliations:
+      - ref: osu
+    degrees: PhD
+affiliations:
+  - id: osu
+    name: Oregon State University
+  - id: usda
+    name: U.S. Department of Agriculture
+  - id: nyu
+    name: City University of New York
+format: 
+  pdf:
+    geometry: "margin=0.75in"
+    cap-location: bottom
+    tbl-cap-location: bottom
+    header-includes: 
+      - \usepackage{fancyhdr, amsthm, amssymb,amsfonts,amsthm, mystyle, amsmath}
+      - \usepackage{float}
+      - \floatplacement{table}{H}
+      - \pagestyle{fancy}
+      - \fancyhead[R]{Homework 3}
+      - \fancyhead[L]{Trent VanHawkins}
+      - \fancyfoot[C]{\thepage} # Center page number at bottom of each page
+embed-resources: true
+toc: true
+code-fold: true
+execute: 
+  warning: false
+code-links:
+  - text: GitHub Repository
+    href: https://github.com/hawktre/wheat_striperust
+page-layout: full
+references: references.bib
+bibliography: references.bib
+---
+
+# Introduction
+
+The previous report in this series was an **Exploratory Data Analysis** where we described the nature of the data that have been collected in order better describe the aerial dispersal of Stripe Rust (*Puccinia stiiformis*) among Wheat plants. In that report, we explored various data visualizations and summaries and learned that in this experimental setup, Stripe Rust is particularly virulent and spread rapidly through the experimental plots.
+
+Here, we consider previous, similar work that has been conducted by this team and others in order to begin building an appropriate modeling framework. We will begin by exploring the work proposed by @gent2019.
+
+# Modeling Framework
+
+## Choosing an appropriate outcome
+
+In [@gent2019], disease severity at yard $i$ was measured as the number of diseased plants at yard $i$ and time $t$. Thus, it could be modeled naturally by a binomial probability model where 
+
+$$Y_{i,t} \overset{\text{indep.}}{\sim} b(n_{i,t}, p_{i,t})$$. 
+
+Here, recalling the study design as described in the **Exploratory Data Analysis** report, let us index an individual sample grid with $i$ at time $t \in \bigpar{1, \ldots, 5}$. Additionally, we denote the experimental block $b \in (1, 2, 3, 4)$, with replicates distinguished by the number of inoculation sources $s \in \bigpar{1, 2, 4}$. Recall that disease severity at sample location $i$ was measured via visual estimation as the proportion of infected plant tissue within the $(0.76m \times 0.76m)$ and was expressed as a percentage. Using this measurement scheme, the outcome naturally presents as a continuous measure with bounds at $(0,1)$, which is naturally captured by a $\text{Beta}(a, b)$ distribution, where $a$ and $b$ are shape parameters. That is, 
+$$
+Y_{i,t,s,b} \overset{\text{indep.}}{\sim} \text{Beta}(a_{i,t,s,b},b_{i,t,s,b}).
+$$
+
+In this report, we will drop subscripts for block and replicate ($b$ and $s$) for economy of expression. Under this assumption, the pdf of $Y$ is given by
+
+$$
+f_Y(y; a, b) = \frac{\Gamma(a + b)}{\Gamma(a)\Gamma(b)} y^{a-1}(1-y)^{b-1} \quad 0 < y < 1
+$$
+It is less intuitive to interpret the shape parameters $a$ and $b$, so they are often reperameterized in terms of the mean and precision of the distribution so that 
+
+$$
+\mu = \frac{a}{a+b}, \quad \phi = a + b \implies a = \mu\phi, \quad b= \phi(1-\mu)
+$$
+
+In terms of the mean ($\mu$) and precision ($\phi$), we can work the pdf into the form of an exponential family as follows
+
+$$
+\begin{split}
+  f(y; \mu, \phi) &= \frac{\Gamma(\phi)}{\Gamma(\mu\phi)\Gamma(\phi(1-\mu))} y^{\mu\phi-1}(1-y)^{\phi(1-\mu)-1} \\
+  &= \frac{\Gamma(\phi)}{y(1-y)^{\phi - 1}}\Exp{\mu\phi\log y - \mu\phi\log(1-y) - \bigbrak{\log\Gamma(\mu\phi) + \log\Gamma(\phi(1 - \mu))}} \\
+  &= \frac{\Gamma(\phi)}{y(1-y)^{\phi - 1}}\Exp{\phi\bigpar{\mu\log\bigpar{\frac{y}{1-y}}} - \frac{1}{\phi}\bigbrak{\log\Gamma(\mu\phi) + \log\Gamma(\phi(1 - \mu))}} \\
+\end{split}
+$$
+This is nearly consistent with an exponential family of the form $\Exp{\frac{\theta T(y) - b(\theta)}{a(\phi)} + c(y, \phi)}$
+
+$$
+a(\phi) = \frac{1}{\phi} \quad \theta = \mu \quad b(\theta) = \log\Gamma(\mu\phi) + \log\Gamma(\phi(1 - \mu)) \quad T(y) = \log\bigpar{\frac{y}{1-y}}
+$$
+
+with the exception that $b(\theta)$ is a function of $\mu$!
+
+# References
+::: {#refs}
+:::

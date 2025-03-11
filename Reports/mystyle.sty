@@ -1,0 +1,22 @@
+\ProvidesPackage{mystyle}
+
+\newcommand{\bigpar}[1]{\left(#1\right)}
+\newcommand{\bigbrak}[1]{\left[#1\right]}
+\newcommand{\bigbrace}[1]{\left\{#1\right\}}
+\newcommand{\abs}[1]{\left|#1\right|}
+\newcommand{\E}[2][]{\text{E}{#1}\left[#2\right]}
+\newcommand{\Var}[2][]{\text{Var}{#1}\left(#2\right)}
+\newcommand{\Cov}[1]{\text{Cov}\left(#1\right)}
+\newcommand{\indicate}[1]{\mathbbm{1}\left(#1\right)}
+\newcommand{\Exp}[1]{\text{exp}\left\{#1\right\}}
+\newcommand{\asim}{\,\dot{\sim}\,}
+\newcommand{\isim}{\overset{\text{iid}}{\sim}}
+\newcommand{\nsum}[1]{\sum\limits_{i=1}^n #1}
+\newcommand{\nprod}[1]{\prod\limits_{i=1}^n #1}
+\newcommand{\eval}[3]{\left. #1\right|_{#2}^{#3}}
+\newcommand{\order}[2]{#1_{(#2)}}
+\newcommand\independent{\protect\mathpalette{\protect\independenT}{\perp}}
+\def\independenT#1#2{\mathrel{\rlap{$#1#2$}\mkern2mu{#1#2}}}
+\DeclareMathOperator{\logit}{logit}
+
+\endinput
