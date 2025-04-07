@@ -65,6 +65,7 @@ stripe.inoc <- stripe.full %>%
   left_join(id_key, by = c("plot", "north", "east")) %>% 
   separate_wider_position(plot, 
                           widths = c("block" = 1, "rep" = 1),
-                          cols_remove = F)
+                          cols_remove = F) %>% 
+  mutate(plotID_new = paste0(block, inoculum_total))
 
 saveRDS(stripe.inoc, here("DataProcessed/experimental/stripe_clean.rds"))
