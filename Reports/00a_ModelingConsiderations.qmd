@@ -51,7 +51,7 @@ bibliography: references.bib
 
 # Introduction
 
-The previous report in this series was an **Exploratory Data Analysis** where we described the nature of the data that have been collected in order better describe the aerial dispersal of Stripe Rust (*Puccinia stiiformis*) among Wheat plants. In that report, we explored various data visualizations and summaries and learned that in this experimental setup, Stripe Rust is particularly virulent and spread rapidly through the experimental plots.
+The previous report in this series was an **Exploratory Data Analysis** where we described the nature of the data that have been collected in order to better describe the aerial dispersal of Stripe Rust (*Puccinia striiformis*) among Wheat plants. In that report, we explored various data visualizations and summaries and learned that in this experimental setup, Stripe Rust is particularly virulent and spread rapidly through the experimental plots.
 
 In this report, we build on previous work, particularly that of @gent2019, to develop a suitable modeling framework for Stripe Rust dispersal under our experimental conditions. We first review the approach proposed in @gent2019 before discussing how we adapt it to our setting and implementation methods.
 
@@ -61,69 +61,67 @@ In this report, we build on previous work, particularly that of @gent2019, to de
 
 In @gent2019, disease severity at yard $i$ was measured as the number of diseased plants at yard $i$ and time $t$. Thus, it could be modeled naturally by a binomial probability model where
 
-$$Y_{i,t} \overset{\text{indep.}}{\sim} b(n_{i,t}, p_{i,t})$$.
+$$Y_{i,t} \overset{\text{indep.}}{\sim} b(n_{i,t}, p_{i,t})$$
 
-Here, recalling the study design as described in the **Exploratory Data Analysis** report, let us index an individual sample location $i$ at time $t \in \bigpar{1, \ldots, 5}$. Additionally, we denote the experimental block $b \in (1, 2, 3, 4)$, with replicates distinguished by the number of inoculation sources $s \in \bigpar{1, 2, 4}$. Recall that disease severity at sample location $i$ was measured via visual estimation as the proportion of infected plant tissue within the $(0.76m \times 0.76m)$ and was expressed as a percentage. Using this measurement scheme, the outcome naturally presents as a continuous measure with bounds at $(0,1)$, which is naturally captured by a $\text{Beta}(a, b)$ distribution where $a$ and $b$ are shape parameters. That is, 
+Here, recalling the study design as described in the **Exploratory Data Analysis** report, let us index an individual sample location $i$ at time $t \in \bigpar{1, \ldots, 5}$. Additionally, we denote the experimental block $b \in (1, 2, 3, 4)$, with replicates distinguished by the number of inoculation sources $s \in \bigpar{1, 2, 4}$. Recall that disease severity at sample location $i$ was measured via visual estimation as the proportion of infected plant tissue within the $(0.76m \times 0.76m)$ and was expressed as a percentage. Using this measurement scheme, the outcome naturally presents as a continuous measure with bounds at $[0,1]$, which is naturally captured by a $\text{Beta}(a, b)$ distribution where $a$ and $b$ are shape parameters. That is,
 
 $$
 Y_{i,t,s,b} \overset{\text{indep.}}{\sim} \text{Beta}(a_{i,t,s,b},b_{i,t,s,b}).
 $$
 
-In this report, we will drop subscripts for block and replicate ($b$ and $s$) for economy of expression. Under this assumption, the pdf of $Y$ is given by
+In this report, we will drop subscripts for block and replicate ($b$ and $s$) for economy of expression. Under this assumption, the pdf of a single observation of $Y$ at a single time-point is given by
 
 $$
-f_Y(y_{i,t}; a_{it}, b_{i,t}) = \frac{\Gamma(a_{i,t} + b_{i,t})}{\Gamma(a_{i,t})\Gamma(b_{i,t})} y^{a_{i,t}-1}(1-y_{i,t})^{b_{i,t}-1} \quad 0 < y < 1
+f_Y(y; a, b) = \frac{\Gamma(a + b)}{\Gamma(a)\Gamma(b)} y^{a-1}(1-y)^{b-1} \quad 0 \leq y \leq 1
 $$
 
-It is less intuitive to interpret the shape parameters $a$ and $b$, so they are often reparameterized in terms of the mean and precision of the distribution so that
+It is less intuitive to interpret the shape parameters $a$ and $b$, so they are often reparameterized in terms of the mean and precision of the distribution so that (ignoring the indices)
 
 $$
-\mu_{i,t} = \frac{a_{i,t}}{a_{i,t}+b_{i,t}}, \quad \phi = a + b \implies a = \mu\phi, \quad b= \phi(1-\mu)
+\mu = \frac{a}{a+b}, \quad \phi = a + b \implies a = \mu\phi, \quad b= \phi(1-\mu)
 $$
 
 Under this parameterization, we have that
 
 $$
 \E{y} = \mu \quad 0 < \mu < 1; \quad  \text{and} \quad \Var{y} = \frac{\mu(1-\mu)}{1 + \phi} \quad \phi > 0
-$$ 
+$$
 
-That is, for $Y_i \mid \boldsymbol{x}_i \overset{\text{indp.}}{\sim} B(\mu_i, \phi)$, we have mean $\mu_i$ and unknown precision parameter $\phi$. 
-
-### Considerations
-
-We have described a new paradigm where instead of $Y_i \mid \boldsymbol{x}_i \overset{\text{indp.}}{\sim} b(n_i, p_i)$, we have $Y_i \mid \boldsymbol{x}_i \overset{\text{indp.}}{\sim} B(\mu_i, \phi)$. In typical logistic regression, the parameter $n_i$ is considered fixed and known, which is usually the case in reality. Under this new paradigm we must estimate the mean parameter $\mu_{i,t}$ *and* the precision $\phi$ (or dispersal if estimating $\phi^{-1}$). Note here that for a fixed $\mu$, dispersion decreases as $\phi$ increases. This brings about a natural question: *In a typical Generalized Regression Model (GRM) framework, the parameter $\phi$ is considered to be fixed across $i$. Here, we are indexing by both sample location $i$ and time-point $t$. Is it appropriate to consider the same approach here so that we uniquely estimate $\phi_t$ at each time $t \in (1, \ldots, 5)$, or do we need to consider a unique $\phi_{i,t}$ for each sample location? If we do consider a unique $\phi_{i,t}$ will we overparameterize our model?* 
+That is, for $Y_{i,t} \mid \boldsymbol{x}_{i,t} \overset{\text{indep.}}{\sim} \text{Beta}(\mu_{i,t}, \phi_t)$, we estimate a unique mean response $\mu_{i,t}$ for each sample location and time point, while assuming a shared precision parameter $\phi_t$ across locations within a given time. This is a common modeling assumption in generalized regression frameworks to reduce complexity and avoid overparameterization [@ferrari2004]. Optionally, a dispersion parameter $g(\phi_t) = \phi_t^{-1}$ can be estimated instead for interpretability.
 
 ## Specifying Mean Structure
 
-Following the framework in @gent2019, the problem we have before us is that of a non-linear least squares where we would like to model the mean parameter $\mu_{i,t}$. In previous work, for $Y_i \mid \mathbf{x}_i \overset{\text{indep.}}{\sim} b(n_i,p_i)$ we modeled the parameter $p_i$ as 
+Following the framework in @gent2019, the problem we have before us is that of a non-linear least squares -- where we would like to model the mean parameter $\mu_{i,t}$ but also need to estimate the parameter $\phi_t$ under the new framework. In previous work, for $Y_{i,t} \mid \mathbf{x}_{i,t} \overset{\text{indep.}}{\sim} b(n_{i,t},p_{i,t})$ the parameter $p_{i,t}$ was modeled as
 
 $$
-\log\bigpar{\frac{p_i}{1-p_i} } = \eta_i
-$$
+\log\bigpar{\frac{p_{i,t}}{1-p_{i,t}} } = \eta_{i,t} = \beta + \delta\bigpar{\frac{y_{i,t-1}}{n_{i,t-1}}} + \gamma \sum_{i \neq j }\bigpar{\frac{a_j y_{j,t-1}}{n_{j,t-1}w_{ij}}\Exp{-\alpha d_{ij}}}
+$${#eq-oldmod}
 
-where
+where:
 
-$$
-\eta_i = \beta + \delta\bigpar{\frac{\tilde y_i}{n_{\tilde y_i}}} + \gamma \sum_{i = 1}^{M_i}\bigpar{\frac{a_jz_j}{n_{z_j}}w_{ij}\Exp{-\alpha d_{ij}}}
-$$ {#eq-oldmod}
-
-One advantage of using a Beta outcome for our data is that we may still use a logit-link. Letting $\boldsymbol\eta$ denote our parameter vector of interest and $\mu_{i,t} = g^{-1}(\mathbf{x}_{i,t}^T\boldsymbol\eta)$, we have using the logit link:
-
-$$
-\mu_{i,t} = \frac{e^{\mathbf{x}_{i,t}^T\boldsymbol\eta}}{1 + e^{\mathbf{x}_{i,t}^T\boldsymbol\eta}} 
-$$
-
-We would like to model the mean component as
+  - $y$ is the number of diseased plants at the respective yard
+  - $n$ is the total plants sampled at the respective yard 
+  - $a$ is the area of the respective yard in acres
+  - $d_{ij}$ is the distance (in kilometers) from centroids of yard $i$ to yard $j$
+  - $w_{ij}$ is the wind vector on the $i-j$ direction in the prior month
+  
+One advantage of using a Beta outcome here is that we may still use a logit-link. Letting $\eta_{i,t}$ denote our linear predictor of interest, we have using the logit link:
 
 $$
-\log\bigpar{\frac{\mu_{i,t}}{1-\mu_{i,t}}} = \boldsymbol{\eta} = \beta+ \delta y_{i,t-1} + \gamma\sum_{j = 1}^{M_i}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}}
+\mu_{i,t} = \text{logit}^{-1}(\eta_{i,t})
+$$
+
+This time, we will model the mean component as
+
+$$
+\log\bigpar{\frac{\mu_{i,t}}{1-\mu_{i,t}}} = \eta_{i,t} = \beta+ \delta y_{i,t-1} + \gamma\sum_{i \neq j}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}}
 $$ {#eq-meanmod}
 
-Variables and parameters definitions and interpretations, respectively, are outlined in @tbl-covars. Note some differences for the current formulation of the mean structure. 
+Variables, parameters definitions, and interpretations for @eq-meanmod are outlined in @tbl-covars. Note some differences for the proposed formulation of the mean structure:
 
-  * There is no longer a need to scale $y_{j,t-1}$ by the size as all blocks are the same size ($30.5 \times 30.5$ m) with the same density of plants. 
-  
-  * We also opt to use the scale-invariant power-law kernel as opposed to an exponential kernel to model spatial decay of disease transmission from the target. 
+  1. There is no longer a need to scale $y_{j,t-1}$ by the size as all blocks are the same size ($30.5 \times 30.5$ m) with the same density of plants.
+
+  2. We also opt to use the scale-invariant power-law kernel as opposed to an exponential kernel to model spatial decay of disease transmission from the target.
 
 ::: {#tbl-covars}
 \begin{table}
@@ -162,100 +160,95 @@ Variables and parameters definitions and interpretations, respectively, are outl
 \small Covariates, parameters, and their interpretations for the proposed model from @eq-meanmod.
 :::
 
-Note that under this new mean structure, we treat all other plants $j$ where $i \neq j$ as potential sources. Remember in the new framework, that we have known points of disease inoculation; so we could consider another formulation 
-
-$$
-\log\bigpar{\frac{\mu_{i,t}}{1-\mu_{i,t}}} = \boldsymbol{\eta} = \beta+ \delta y_{i,t-1} + \gamma\sum_{s \in S} \bigpar{w_{is} (d_{ij} + d_0)^{-\kappa}}
-$$ {#eq-sourcemod}
-
-Where $w_{is}$ is the projected wind vector in the $i - s$ direction where $s$ denotes the known inoculation source. Here, we must make a modeling decision as to whether we include all other plants *and* inoculation points as potential sources or just the inoculation sources. 
-
 # Model Implementation
 
-Regardless of model formulation, we are now tasked with estimating the parameter vector 
+We are now tasked with estimating the parameter vector
 
 $$
-\boldsymbol \theta = \begin{bmatrix} \boldsymbol\eta \\ \phi\end{bmatrix} = \begin{bmatrix} \beta \\ \delta \\ \gamma \\ \kappa \\ \phi\end{bmatrix}
+\boldsymbol \theta = \begin{bmatrix} \boldsymbol\tau \\ \phi\end{bmatrix} = \begin{bmatrix} \beta \\ \delta \\ \gamma \\ \kappa \\ \phi\end{bmatrix}
 $$
 
-We can accomplish this task through maximum likelihood estimation by minimizing the negative log-likelihood with respect to out parameter vector, using gradient descent. For this method, we will need the gradient of the negative log-likelihood with respect to our parameter vector $\boldsymbol\theta$. Here we will consider $\phi_t$ being indexed only by time. Under the mean-precision reparameterization, the pdf of a single observation $y_{i,t}$ can be expressed as 
+where $\boldsymbol\tau$ denotes the vector of regression parameters associated with the mean structure. We can accomplish this task through maximum likelihood estimation, via gradient descent. Under the mean-precision reparameterization, the pdf of a single observation at a single time point can be expressed as
 
 $$
-f(y \mid \mu_i, \phi) = \frac{\Gamma(\phi)}{\Gamma(\mu_i\phi)\Gamma((1-\mu_i)\phi)}y_i^{\mu_i\phi - 1}(1-y_i)^{(1-\mu_i)\phi - 1} \quad 0 < y_i < 1
-$${#eq-betapdf}
+f_{Y_{i,t}}(y \mid \mu, \phi) = \frac{\Gamma(\phi)}{\Gamma(\mu\phi)\Gamma((1-\mu)\phi)}y^{\mu\phi - 1}(1-y)^{(1-\mu)\phi - 1} \quad 0 \leq y \leq 1
+$$ {#eq-betapdf}
 
-and log-likelihood of $n$ independent observations given by 
+Assuming $n$ independent observations at a single time point, the log-likelihood is given by
 
 $$
-\ell(\boldsymbol{\eta}, \phi) = \nsum \ell_i(\mu_{i}, \phi)
+\ell(\boldsymbol{\theta}) = \nsum \ell_i(\mu_{i}, \phi)
 $$
 
 where
 
 $$
 \ell_i(\mu_i, \phi) = \log\Gamma(\phi) - \log\Gamma(\mu_i\phi) - \log\Gamma((1-\mu_i)\phi) + (\mu_i\phi - 1)\log y_i + \{(1-\mu_i)\phi-1\}\log(1-y_i)
-$${#eq-betaloglik}
+$$ {#eq-betaloglik}
 
-and thus, the negative log-likelihood will be given by 
-
-$$
--\ell(\boldsymbol{\eta}, \phi) = -\nsum\log\Gamma(\phi) - \log\Gamma(\mu_i\phi) - \log\Gamma((1-\mu_i)\phi) + (\mu_i\phi - 1)\log y_i + \{(1-\mu_i)\phi-1\}\log(1-y_i)
-$$
-
-For the gradient descent algorithm, we will need to derive the gradient of our negative log-likelihood
+Letting $\theta_k \in \boldsymbol\theta, \quad k = 1,\ldots,K$ denote a general parameter, note that we may derive the score function for each parameter $\theta_k \in \boldsymbol\theta$ using the chain rule as
 
 $$
-\nabla_{\boldsymbol\theta} \ell(\boldsymbol\eta, \phi)
-$$
+\frac{\partial \ell(\boldsymbol\theta)}{\partial \theta_k}
+= \sum_{i=1}^n \frac{\partial \ell_i(\mu_i, \phi)}{\partial \mu_i} 
+\times \frac{\partial \mu_i}{\partial \eta_i} 
+\times \frac{\partial \eta_i}{\partial \theta_k}
+$$ 
 
-Letting $\theta_k \in \boldsymbol\eta, \quad k = 1,\ldots,K$ denote a general parameter, note that we may derive the score function for each parameter $\theta_k \in \boldsymbol\eta$ using the chain rule as
-
-$$
-\frac{\partial\ell(\theta, \phi)}{\partial\theta_k} = \nsum \frac{\partial\ell_i(\mu_i, \phi)}{\partial\mu_i} \cdot \frac{d\mu_i}{d\eta_i}\cdot\frac{\partial\eta_i}{\partial\theta_k}
-$$
-Letting $\psi(\cdot)$ denote the digamma function $\bigpar{\psi(z) = \frac{d}{dz} \log\Gamma(z)}$, and since we have $\mu = \logit^{-1}(\boldsymbol\eta)$, we have
+Letting $\psi(\cdot)$ denote the digamma function $\bigpar{\psi(z) = \frac{d}{dz} \log\Gamma(z)}$, and since we have $\mu = \logit^{-1}(\eta)$, we have
 
 $$
-\frac{\partial\ell_i(\mu_i, \phi)}{\partial\mu_i} = \phi\bigbrak{\log\frac{y_i}{1-y_i} - \{\psi(\mu_i\phi)-\psi((1-\mu_i)\phi)\}} \qquad \frac{d\mu_i}{d\eta} = \frac{1}{g'(\mu_i)} = \mu_i(1-\mu_i)
-$$
-Then, taking the derivative of $\boldsymbol\eta$ with respect to each parameter $\begin{pmatrix} \beta & \delta & \gamma & \kappa\end{pmatrix}$ under the @eq-meanmod formulation, we have 
+\frac{\partial\ell_i(\mu_i, \phi)}{\partial\mu_i} = \phi\bigbrak{\log\frac{y_i}{1-y_i} - \{\psi(\mu_i\phi)-\psi((1-\mu_i)\phi)\}} \qquad \frac{d\mu_i}{d\eta_i} = \mu_i(1 - \mu_i)
+$$ 
+
+Then, taking the derivative of $\eta$ with respect to each parameter $\theta_k \in \boldsymbol\tau$ under the proposed formulation (@eq-meanmod), we have
 
 $$
 \begin{split}
 \frac{\partial\eta}{\partial\beta} &= 1\\
 \frac{\partial\eta}{\partial\delta} &= y_{i,t-1}\\
-\frac{\partial\eta}{\partial\beta} &= \sum_{j = 1}^{M_i}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}}\\
-\frac{\partial\eta}{\partial\beta} &= -\gamma \sum_{j = 1}^{M_i}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}\log(d_{ij} + d_0)}\\
+\frac{\partial\eta}{\partial\gamma} &= \sum_{j \neq i}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}}\\
+\frac{\partial\eta}{\partial\kappa} &= -\gamma \sum_{j \neq i}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}\log(d_{ij} + d_0)}\\
 \end{split}
-$$
-We may compute the derivative of $\phi$ directly as
+$$ 
+
+ We may compute the derivative of $\phi$ directly as
 
 $$
-\frac{\partial\ell_i(\mu_i, \phi)}{\partial\phi} =  \psi(\phi) - \mu \psi(\mu \phi) - (1 - \mu) \psi(\phi(1 - \mu)) + \mu \log Y_{i,t} + (1 - \mu) \log (1 - Y_{i,t})
-$$
-Putting letting $y_{i,t}^* = \log\bigpar{\frac{y_{i,t}}{1 - y_{i,t}}}$ and $\mu_{i,t}^* = \psi(\mu_i\phi)-\psi((1-\mu_i)\phi$, our gradient is given by 
+\frac{\partial\ell_i(\mu_i, \phi)}{\partial\phi} =  \psi(\phi) - \mu_i \psi(\mu_i \phi) - (1 - \mu_i) \psi(\phi(1 - \mu_i)) + \mu_i \log y_i + (1 - \mu_i) \log (1 - y_i)
+$$ 
+
+To express the full gradient, we reintroduce the index for time $t$. Letting $y_{i,t}^* = \log\bigpar{\frac{y_{i,t}}{1 - y_{i,t}}}$ and $\mu_{i,t}^* = \psi(\mu_{i,t}\phi_t)-\psi((1-\mu_{i,t})\phi_t)$, our gradient is given by
 
 $$
-\nabla_{\boldsymbol\theta} \ell(\boldsymbol\eta, \phi) = 
-\begin{bmatrix}\frac{\partial\ell(\boldsymbol\eta, \phi)}{\partial\beta} \\ 
-\frac{\partial\ell(\boldsymbol\eta, \phi)}{\partial\delta}\\
-\frac{\partial\ell(\boldsymbol\eta, \phi)}{\partial\gamma}\\
-\frac{\partial\ell(\boldsymbol\eta, \phi)}{\partial\kappa}\\
-\frac{\partial\ell(\boldsymbol\eta, \phi)}{\partial\phi}\end{bmatrix} = 
+\nabla \ell(\boldsymbol\theta) = 
 \begin{bmatrix}
-\nsum\phi_t(y_{i,t}^* - \mu^*) \times \mu_{i,t}(1 - \mu_{i,t}) \times 1 \\
-\nsum\phi_t(y_{i,t}^* - \mu^*) \times \mu_{i,t}(1 - \mu_{i,t}) \times y_{i,t-1} \\
-\nsum\phi_t(y_{i,t}^* - \mu^*) \times \mu_{i,t}(1 - \mu_{i,t}) \times \sum_{j = 1}^{M_i}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}} \\
-\nsum\phi_t(y_{i,t}^* - \mu^*) \times \mu_{i,t}(1 - \mu_{i,t}) \times -\gamma \sum_{j = 1}^{M_i}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}\log(d_{ij} + d_0)} \\
-\nsum \psi(\phi) - \mu \psi(\mu \phi) - (1 - \mu) \psi(\phi(1 - \mu)) + \mu \log y_{i,t} + (1 - \mu) \log (1 - y_{i,t}) \\
+\frac{\partial\ell(\boldsymbol\theta)}{\partial\beta} \\ 
+\frac{\partial\ell(\boldsymbol\theta)}{\partial\delta}\\
+\frac{\partial\ell(\boldsymbol\theta)}{\partial\gamma}\\
+\frac{\partial\ell(\boldsymbol\theta)}{\partial\kappa}\\
+\frac{\partial\ell(\boldsymbol\theta)}{\partial\phi}
 \end{bmatrix}
 $$
 
-## Considerations for Gradient Descent
+Where: 
 
- * learning rate? 
- * Stopping criteria?
- * 
+$$
+\begin{split}
+\frac{\partial\ell(\boldsymbol\theta)}{\partial\beta} &= \nsum\phi_t(y_{i,t}^* - \mu_{i,t}^*) \times \mu_{i,t}(1 - \mu_{i,t}) \\
+\frac{\partial\ell(\boldsymbol\theta)}{\partial\delta} &= \nsum\phi_t(y_{i,t}^* - \mu_{i,t}^*) \times \mu_{i,t}(1 - \mu_{i,t}) \times y_{i,t-1} \\
+\frac{\partial\ell(\boldsymbol\theta)}{\partial\gamma} &= \nsum\phi_t(y_{i,t}^* - \mu_{i,t}^*) \times \mu_{i,t}(1 - \mu_{i,t}) \times \sum_{j \neq i}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}} \\
+\frac{\partial\ell(\boldsymbol\theta)}{\partial\kappa} &= \nsum\phi_t(y_{i,t}^* - \mu_{i,t}^*) \times \mu_{i,t}(1 - \mu_{i,t}) \times -\gamma \sum_{j \neq i}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}\log(d_{ij} + d_0)} \\
+\frac{\partial\ell(\boldsymbol\theta)}{\partial\phi} &= \nsum \psi(\phi_t) - \mu_{i,t} \psi(\mu_{i,t} \phi_t) - (1 - \mu_{i,t}) \psi(\phi_t(1 - \mu_{i,t})) + \mu_{i,t} \log y_{i,t} + (1 - \mu_{i,t}) \log (1 - y_{i,t}) \\
+\end{split}
+$$
+
+The gradient descent algorithm requires that we minimize the the negative of the log-likelihood, and the appropriate gradient can be easily obtained since 
+
+$$
+\nabla_{\boldsymbol\theta}[-\ell(\boldsymbol\theta)] = -\nabla_{\boldsymbol\theta}[\ell(\boldsymbol\theta)]
+$$
+
 
 # References
 

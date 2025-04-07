@@ -451,3 +451,10 @@ first_tab(stripe.thresh, blk = "B")
 first_tab(stripe.thresh, blk = "C")
 first_tab(stripe.thresh, blk = "D")
 ```
+
+```{r}
+stripe.inoc %>% 
+  group_by(plot, visit) %>% 
+  summarise(zeros = sum(intensity == 0))
+```
+
