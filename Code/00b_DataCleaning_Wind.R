@@ -47,32 +47,36 @@ wind.clean <- wind %>%
          "direction" = 2,
          "speed" = 3) %>% 
   filter(datetime >= ymd_hms('2024-04-09 00:00:00') & 
-           datetime < ymd_hms('2024-06-16 00:00:00')) %>% 
-  mutate(period = if_else(datetime < as_datetime(min(stripe$date)), "Before Surveys", "During Surveys"),
-         month = month(datetime, label = T, abbr = F),
-         direction.circ = circular(direction, units = "degrees", template = "geographics"))
+           datetime < ymd_hms('2024-06-16 00:00:00'))
 
 
 # Compute Wind cardinal_dir ----------------------------------------------------
 
-wind_run <- function(direction, n_directions){
+wind_cardinal <- function(direction, n_directions){
+
   dir_labs <- c("N", "NNE", "NE", "ENE", "E", "ESE", 
                 "SE", "SSE", "S", "SSW", "SW", "WSW", 
                 "W", "WNW", "NW", "NNW")
   
   n_directions <- n_directions
   dir_bin_width <- 360 / n_directions
+  dir_bin_midpoint <- seq(0, 360 - dir_bin_width, dir_bin_width)*pi/180
+  
+  labs_key <- bind_cols(cardinal = dir_labs, rads = as.numeric(dir_bin_midpoint))
   dir_bin_cuts <- seq(dir_bin_width / 2, 360 - dir_bin_width / 2, dir_bin_width)
   
   dir_intervals <- findInterval(c(direction, dir_bin_cuts), dir_bin_cuts)
   dir_intervals[dir_intervals == n_directions] <- 0
   
   cardinal_dir <- head(factor(dir_intervals, labels = dir_labs), -n_directions)
+  out <- data.frame("cardinal" = cardinal_dir) %>% 
+    left_join(labs_key, by = "cardinal")
   
-  return(cardinal_dir)
+  return(out)
 }
 
-wind.clean$cardinal <- wind_run(wind.clean$direction, n_directions = 16)
+wind.clean$cardinal <- wind_cardinal(wind.clean$direction, n_directions = 16)[,1]
+wind.clean$cardinal.dir <- wind_cardinal(wind.clean$direction, n_directions = 16)[,2]
 
 #Save the raw wind data
 saveRDS(wind.clean, here("DataProcessed/wind/wind_clean.rds"))

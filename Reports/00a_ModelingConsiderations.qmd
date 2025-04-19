@@ -95,16 +95,16 @@ Following the framework in @gent2019, the problem we have before us is that of a
 
 $$
 \log\bigpar{\frac{p_{i,t}}{1-p_{i,t}} } = \eta_{i,t} = \beta + \delta\bigpar{\frac{y_{i,t-1}}{n_{i,t-1}}} + \gamma \sum_{i \neq j }\bigpar{\frac{a_j y_{j,t-1}}{n_{j,t-1}w_{ij}}\Exp{-\alpha d_{ij}}}
-$${#eq-oldmod}
+$$ {#eq-oldmod}
 
 where:
 
-  - $y$ is the number of diseased plants at the respective yard
-  - $n$ is the total plants sampled at the respective yard 
-  - $a$ is the area of the respective yard in acres
-  - $d_{ij}$ is the distance (in kilometers) from centroids of yard $i$ to yard $j$
-  - $w_{ij}$ is the wind vector on the $i-j$ direction in the prior month
-  
+-   $y$ is the number of diseased plants at the respective yard
+-   $n$ is the total plants sampled at the respective yard
+-   $a$ is the area of the respective yard in acres
+-   $d_{ij}$ is the distance (in kilometers) from centroids of yard $i$ to yard $j$
+-   $w_{ij}$ is the wind vector on the $i-j$ direction in the prior month
+
 One advantage of using a Beta outcome here is that we may still use a logit-link. Letting $\eta_{i,t}$ denote our linear predictor of interest, we have using the logit link:
 
 $$
@@ -114,14 +114,14 @@ $$
 This time, we will model the mean component as
 
 $$
-\log\bigpar{\frac{\mu_{i,t}}{1-\mu_{i,t}}} = \eta_{i,t} = \beta+ \delta y_{i,t-1} + \gamma\sum_{i \neq j}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}}
+\log\bigpar{\frac{\mu_{i,t}}{1-\mu_{i,t}}} = \eta_{i,t} = \beta+ \delta y_{i,t-1} + \gamma\sum_{j \neq i}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}}
 $$ {#eq-meanmod}
 
 Variables, parameters definitions, and interpretations for @eq-meanmod are outlined in @tbl-covars. Note some differences for the proposed formulation of the mean structure:
 
-  1. There is no longer a need to scale $y_{j,t-1}$ by the size as all blocks are the same size ($30.5 \times 30.5$ m) with the same density of plants.
+1.  There is no longer a need to scale $y_{j,t-1}$ by the size as all blocks are the same size ($30.5 \times 30.5$ m) with the same density of plants.
 
-  2. We also opt to use the scale-invariant power-law kernel as opposed to an exponential kernel to model spatial decay of disease transmission from the target.
+2.  We also opt to use the scale-invariant power-law kernel as opposed to an exponential kernel to model spatial decay of disease transmission from the target.
 
 ::: {#tbl-covars}
 \begin{table}
@@ -193,13 +193,13 @@ $$
 = \sum_{i=1}^n \frac{\partial \ell_i(\mu_i, \phi)}{\partial \mu_i} 
 \times \frac{\partial \mu_i}{\partial \eta_i} 
 \times \frac{\partial \eta_i}{\partial \theta_k}
-$$ 
+$$
 
 Letting $\psi(\cdot)$ denote the digamma function $\bigpar{\psi(z) = \frac{d}{dz} \log\Gamma(z)}$, and since we have $\mu = \logit^{-1}(\eta)$, we have
 
 $$
 \frac{\partial\ell_i(\mu_i, \phi)}{\partial\mu_i} = \phi\bigbrak{\log\frac{y_i}{1-y_i} - \{\psi(\mu_i\phi)-\psi((1-\mu_i)\phi)\}} \qquad \frac{d\mu_i}{d\eta_i} = \mu_i(1 - \mu_i)
-$$ 
+$$
 
 Then, taking the derivative of $\eta$ with respect to each parameter $\theta_k \in \boldsymbol\tau$ under the proposed formulation (@eq-meanmod), we have
 
@@ -210,13 +210,13 @@ $$
 \frac{\partial\eta}{\partial\gamma} &= \sum_{j \neq i}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}}\\
 \frac{\partial\eta}{\partial\kappa} &= -\gamma \sum_{j \neq i}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}\log(d_{ij} + d_0)}\\
 \end{split}
-$$ 
+$$
 
- We may compute the derivative of $\phi$ directly as
+We may compute the derivative of $\phi$ directly as
 
 $$
 \frac{\partial\ell_i(\mu_i, \phi)}{\partial\phi} =  \psi(\phi) - \mu_i \psi(\mu_i \phi) - (1 - \mu_i) \psi(\phi(1 - \mu_i)) + \mu_i \log y_i + (1 - \mu_i) \log (1 - y_i)
-$$ 
+$$
 
 To express the full gradient, we reintroduce the index for time $t$. Letting $y_{i,t}^* = \log\bigpar{\frac{y_{i,t}}{1 - y_{i,t}}}$ and $\mu_{i,t}^* = \psi(\mu_{i,t}\phi_t)-\psi((1-\mu_{i,t})\phi_t)$, our gradient is given by
 
@@ -231,7 +231,7 @@ $$
 \end{bmatrix}
 $$
 
-Where: 
+Where:
 
 $$
 \begin{split}
@@ -243,12 +243,124 @@ $$
 \end{split}
 $$
 
-The gradient descent algorithm requires that we minimize the the negative of the log-likelihood, and the appropriate gradient can be easily obtained since 
+The gradient descent algorithm requires that we minimize the the negative of the log-likelihood, and the appropriate gradient can be easily obtained since
 
 $$
 \nabla_{\boldsymbol\theta}[-\ell(\boldsymbol\theta)] = -\nabla_{\boldsymbol\theta}[\ell(\boldsymbol\theta)]
 $$
 
+## Selecting Initial Values
+
+To improve convergence and avoid poor local optima in the optimization routine, it is important to specify reasonable starting values for the parameter vector $\boldsymbol\theta = \bigpar{\boldsymbol\tau, \phi}$. Following the recommendation of @ferrari2004, we adopt a method-of-moments approach that uses Ordinary Least Squares (OLS) estimates of $\boldsymbol\tau$ obtained from a linear approximation to the transformed response, and then estimates $\phi$ from the residual variance.
+
+To adapt this strategy to the current nonlinear model, we propose the following initialization scheme for a fixed time point $t$:
+
+-   Let $\mathbf{X}_{n \times k}$ denote the matrix of $k$ covariates for $n$ observations
+-   Let the transformed outcome be denoted by $\check{z_i} = \logit(y_i)$
+-   Let $g'(\mu) = \frac{1}{\mu(1-\mu)}$ denote the derivative of the logit-link
+
+Then, for any proposed value of $\hat\kappa^{(1)}$, repeat the following steps:
+
+1.  Compute covariate values in $\mathbf{X}$ given $\hat\kappa^{(1)}$: $$X_{i,1} = y_{i,t-1} \quad \text{and} \quad X_{i,2} = \sum_{j \neq i}y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\hat\kappa^{(1)}}$$
+
+2.  Fit the linear approximation by regressing the transformed response onto $\mathbf{X}$: $$\begin{pmatrix}\hat\beta^{(1)} & \hat\delta^{(1)} &  \hat\gamma^{(1)}\end{pmatrix} = \bigpar{\mathbf{X}^\top\mathbf{X}}^{-1}\mathbf{X}^\top\check{z}$$
+
+3.  Compute the predicted means: $$\tilde\mu_{i} = \logit^{-1}\bigpar{\eta_{i}^{(1)}}$$
+
+4.  Letting $\check{e}$ be the residuals from the OLS fit of $\check{z}$ on $X$:\
+    $$
+      \check{e} =  \check{z} - \hat{z} = \check{z} - (X^\top X)^{-1}X^\top \check{z}
+      $$ Compute the residual variance, accounting for the logit transformation: $$
+      \check{\sigma}^2_i = \frac{\check{e}^\top \check{e}}{(n - k) \bigbrace{g'(\tilde\mu_i)}^2}
+      $$
+
+5.  To get an initial value of $\hat\phi^{(1)}$, note that we have parameterized our model such that $$
+      \Var{y_i} = \frac{\mu_i(1-\mu_i)}{1 + \phi} \implies \phi = \frac{\mu_i(1-\mu_i)}{\Var{y_i}} - 1
+      $$ Also note, by the Delta Method, that $$
+      \Var{g(y_i)} \approx \Var{y_i}g'(\mu_i)^2
+      $$ Then, using the residual variance from the linear model, we can compute the moment-based precision estimate of $\phi$ as: $$
+      \hat\phi^{(1)} = \frac{1}{n} \sum_{i=1}^n \frac{\tilde\mu_i(1 - \tilde\mu_i)}{\check{\sigma}_i^2} - 1
+      $$
+
+Optimize for as many possible starting values of $\kappa$ as is desired. The optimal value of $\hat\kappa$ will be defined as the one the produces the smallest negative log-likelihood.
+
+## Handling wind, direction, and distance
+
+The last pieces required for model fitting are to
+
+1.  Construct a distance matrix $\boldsymbol{d}_{nxn}$ where each component $d_{ij}$ denotes the distance between sample location $i$ and $j$
+
+2.  Construct a matrix $\mathbf{w}_{n \times n}$, where each component $w_{ij}$ is the orthogonal projection of the *amount* of wind moving from sample location (source) $j$ to sample location (target) $i$ in the time frame between visit $t$ and visit $t-1$
+
+### Constructing the distance matrix ($\boldsymbol{d}$)
+
+We are provided with the distance of each sample location from the origin of the plot--in meters--in the $x$ and $y$ directions. Given these coordinates we can compute each element $d_{ij}$ as
+
+$$
+d_{ij} = \sqrt{(x_j - x_i)^2 + (y_j - y_i)^2}
+$$
+
+### Constructing the wind projection matrix ($\boldsymbol{w}$)
+
+We are supplied with wind speed ($m/s$) and direction (degrees azimuth) for the duration of the study period in addition to the $x,y$ coordinates of each sample location, as mentioned previously. First, we compute a *direction* matrix $\boldsymbol\psi$ where each component $\psi_{ij}$ denotes the direction from target $i$ to source $j$ in radians. That is,
+
+$$
+\psi_{ij} = \mathrm{atan2}\bigpar{y_j - y_i, x_j - x_i}
+$$
+
+Note that the upper-triangle of this matrix will give the direction from source $j$ to target $i$. Now, given the wind speed and direction, we first aggregate wind directions into bins for each of the 16 cardinal directions:
+
+:::{tbl-cardinal}
+
+| Direction | Degrees-Azimuth       | Radians           | Midpoint (°) | Midpoint (rad) |
+|-----------|------------------------|-------------------|--------------|----------------|
+| N         | [348.75, 11.25)        | [6.08, 0.20)      | 0.00         | 0.00           |
+| NNE       | [11.25, 33.75)         | [0.20, 0.59)      | 22.50        | 0.39           |
+| NE        | [33.75, 56.25)         | [0.59, 0.98)      | 45.00        | 0.79           |
+| ENE       | [56.25, 78.75)         | [0.98, 1.38)      | 67.50        | 1.18           |
+| E         | [78.75, 101.25)        | [1.38, 1.77)      | 90.00        | 1.57           |
+| ESE       | [101.25, 123.75)       | [1.77, 2.16)      | 112.50       | 1.96           |
+| SE        | [123.75, 146.25)       | [2.16, 2.55)      | 135.00       | 2.36           |
+| SSE       | [146.25, 168.75)       | [2.55, 2.95)      | 157.50       | 2.75           |
+| S         | [168.75, 191.25)       | [2.95, 3.34)      | 180.00       | 3.14           |
+| SSW       | [191.25, 213.75)       | [3.34, 3.73)      | 202.50       | 3.53           |
+| SW        | [213.75, 236.25)       | [3.73, 4.12)      | 225.00       | 3.93           |
+| WSW       | [236.25, 258.75)       | [4.12, 4.52)      | 247.50       | 4.32           |
+| W         | [258.75, 281.25)       | [4.52, 4.91)      | 270.00       | 4.71           |
+| WNW       | [281.25, 303.75)       | [4.91, 5.30)      | 292.50       | 5.11           |
+| NW        | [303.75, 326.25)       | [5.30, 5.69)      | 315.00       | 5.50           |
+| NNW       | [326.25, 348.75)       | [5.69, 6.08)      | 337.50       | 5.89           |
+
+
+: Directional bins for each of the 16 cardinal directions in degrees-azimuth and radians (centered on North)
+
+:::
+
+Then we follow the process outlined by @gent2019:
+
+  1. Scale the average wind speed by the percentage of time between time point $t$ and $t-1$ for each of the 16 cardinal directions. Denote this vector of directionally binned wind speeds as $\boldsymbol{\omega} = \{\omega_k\}$ $(k=1, \ldots, 16)$.
+
+  2. Letting $\boldsymbol{\alpha} = \{\alpha_k\}$ denote the vector of midpoints (in radians) for the 16 cardinal wind directions, define the vector of angular differences relative to the direction from location $i$ to location $j$, denoted $\psi_{ij}$:
+  $$
+  \Delta_k = \left| \mathrm{atan2}\left( \sin(\alpha_k - \psi_{ij}), \cos(\alpha_k - \psi_{ij}) \right) \right|, \quad k = 1, \ldots, 16
+  $$
+  Then, define the subset of indices:
+  $$
+  \mathcal{K}_{ij} = \left\{ k : \Delta_k < \frac{\pi}{2} \right\}
+  $$
+  That is, select the cardinal directions whose angular distance from $\psi_{ij}$ is less than $\frac{\pi}{2}$.
+  
+  3. Orthogonally project each scaled wind vector from the selected directions onto $\psi_{ij}$:
+  $$
+  p_k = \omega_k \cdot \cos(\Delta_k), \quad \text{for } k \in \mathcal{K}_{ij}
+  $$
+  
+  4. Take $w_{ij}$ as the average of the orthogonal projections:
+  $$
+  w_{ij} = \frac{1}{|\mathcal{K}_{ij}|} \sum_{k \in \mathcal{K}_{ij}} p_k
+  $$
+
+Now all pieces of the modeling framework have been accounted for. 
 
 # References
 
