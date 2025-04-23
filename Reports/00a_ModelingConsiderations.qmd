@@ -302,13 +302,13 @@ $$
 
 ### Constructing the wind projection matrix ($\boldsymbol{w}$)
 
-We are supplied with wind speed ($m/s$) and direction (degrees azimuth) for the duration of the study period in addition to the $x,y$ coordinates of each sample location, as mentioned previously. First, we compute a *direction* matrix $\boldsymbol\psi$ where each component $\psi_{ij}$ denotes the direction from target $i$ to source $j$ in radians. That is,
+We are supplied with wind speed ($m/s$) and direction (degrees azimuth) for the duration of the study period in addition to the $x,y$ coordinates of each sample location, as mentioned previously. First, we compute a *direction* matrix $\boldsymbol\psi$ where each component $\psi_{ij}$ denotes the direction from source $j$ to target $i$ in radians. That is,
 
 $$
-\psi_{ij} = \mathrm{atan2}\bigpar{y_j - y_i, x_j - x_i}
+\psi_{ij} = \mathrm{atan2}\bigpar{y_i - y_j, x_i - x_j} \mod 2\pi
 $$
 
-Note that the upper-triangle of this matrix will give the direction from source $j$ to target $i$. Now, given the wind speed and direction, we first aggregate wind directions into bins for each of the 16 cardinal directions:
+Note that this angle is centered on the positive y-axis, such that if target $i$ is directly North of source $j$ then $\psi_{ij} = 0$; ; if target $i$ is directly East of source $j$ then $\psi_{ij} = \frac{\pi}{2}$; etc. Now, given the wind speed and direction, we first aggregate wind directions into bins for each of the 16 cardinal directions:
 
 :::{tbl-cardinal}
 
@@ -340,7 +340,7 @@ Then we follow the process outlined by @gent2019:
 
   1. Scale the average wind speed by the percentage of time between time point $t$ and $t-1$ for each of the 16 cardinal directions. Denote this vector of directionally binned wind speeds as $\boldsymbol{\omega} = \{\omega_k\}$ $(k=1, \ldots, 16)$.
 
-  2. Letting $\boldsymbol{\alpha} = \{\alpha_k\}$ denote the vector of midpoints (in radians) for the 16 cardinal wind directions, define the vector of angular differences relative to the direction from location $i$ to location $j$, denoted $\psi_{ij}$:
+  2. Letting $\boldsymbol{\alpha} = \{\alpha_k\}$ denote the vector of midpoints (in radians) for the 16 cardinal wind directions, define the vector of angular differences relative to the direction from source $j$ to target $i$, denoted $\psi_{ij}$:
   $$
   \Delta_k = \left| \mathrm{atan2}\left( \sin(\alpha_k - \psi_{ij}), \cos(\alpha_k - \psi_{ij}) \right) \right|, \quad k = 1, \ldots, 16
   $$

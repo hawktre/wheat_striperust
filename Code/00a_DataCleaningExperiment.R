@@ -50,7 +50,8 @@ id_key <- stripe.full %>%
   group_by(plot) %>% 
   reframe(north = north,
           east = east,
-          plant_id = paste0(plot, "_plant",row_number())) %>%
+          plant_id = paste0(plot, "_plant",row_number()),
+          plant_num = row_number()) %>%
   ungroup()
 
 ## Get the total number of innocluations for each plot
