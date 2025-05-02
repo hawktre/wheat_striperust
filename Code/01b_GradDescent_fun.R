@@ -17,6 +17,7 @@ inv_logit <- function(x) 1 / (1 + exp(-x))
 
 # --- special function for kappa gradient ---
 kappa_inner_sum <- function(y_prev, wind_matrix, dist_matrix, d0, kappa, derivative = F) {
+
   n <- length(y_prev)
   
   # Compute shifted distance matrix and log
@@ -39,7 +40,8 @@ kappa_inner_sum <- function(y_prev, wind_matrix, dist_matrix, d0, kappa, derivat
   diag(spread_matrix) <- 0
   
   # Row sums = vector of kappa inner sums for each i
-  rowSums(spread_matrix)
+  return(rowSums(spread_matrix))
+  
 }
 
 # --- Initialization ---
@@ -49,7 +51,7 @@ initialize_theta <- function(y_cur, y_prev, wind_mat, dist_mat, d_0, kappa_try) 
  #Construct the design matrix
   X1 <- y_prev
   # Get dispersal component and construct design matrix
-  X2 <- map(kappa_try, ~ kappa_inner_sum(
+  X2 <- map(kappa_try, ~kappa_inner_sum(
     y_prev = y_prev,   # or provide fixed values
     wind_matrix = wind_mat,
     dist_matrix = dist_mat,
@@ -107,58 +109,57 @@ initialize_theta <- function(y_cur, y_prev, wind_mat, dist_mat, d_0, kappa_try) 
   return(theta_list)
   
 }
-
-# --- Main Gradient Descent Function ---
-fit_beta_model <- function(y_current, y_prev, wind_matrix, dist_matrix, param_init,
-                           alpha = 1e-3, max_iter = 5000, tol = 1e-6, d0 = 0.01) {
-  browser()
-  n <- length(y_current)
-  theta <- param_init
-  param_history <- list()
-  
-  for (iter in 1:max_iter) {
-    #Compute dispersal component
-    dispersal <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, theta[['kappa']])
-    # --- Compute linear predictor and mu_i ---
-    eta <- theta[['beta']]+ theta[['delta']]*y_prev + theta[['gamma']]*dispersal
-    mu <- inv_logit(eta)
-    
-    # --- Compute weights ---
-    y_star <- logit(y_current)
-    mu_star <- digamma(mu*theta[['phi']]) - digamma((1-mu)*theta[['phi']])
-    theta_weight <- theta[['phi']] * (y_star - mu_star) * mu * (1-mu)
-    
-    # --- Compute gradients (see 00a_ModelingConsiderations.pdf)---
-    
-    grad_beta <- sum(theta_weight)
-    grad_delta <- sum(theta_weight * y_prev)
-    grad_gamma <- sum(theta_weight * dispersal)
-    grad_kappa <- sum(theta_weight * -theta[['gamma']]*kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, theta[['kappa']], derivative = T))
-    grad_phi <- sum(
-      digamma(theta[['phi']])
-      -mu*digamma(mu*theta[['phi']])
-      -(1-mu)*digamma(theta[['phi']]*(1-mu))
-      + mu*log(y_current)
-      +(1-mu)*log(1- y_current)
-      )
-    
-    # --- Update parameters ---
-    theta[['beta']]  <- theta[['beta']]  - alpha * grad_beta
-    theta[['delta']] <- theta[['delta']] - alpha * grad_delta
-    theta[['gamma']] <- theta[['gamma']] - alpha * grad_gamma
-    theta[['kappa']]<- theta[['kappa']] - alpha * grad_kappa
-    theta[['phi']]   <- theta[['phi']]   - alpha * grad_phi
-    
-    # --- Check convergence ---
-    grad_norm <- sqrt(grad_beta^2 + grad_delta^2 + grad_gamma^2 + grad_kappa^2 + grad_phi^2)
-    if (grad_norm < tol) {
-      cat("Converged at iteration:", iter, "\n")
-      break
-    }
-    
-    # Optional: Track history
-    param_history[[iter]] <- unlist(theta)
+# --- function for log-likelihood ---
+loglik_beta <- function(y, mu, phi, sum = T) {
+  ll <- lgamma(phi) -
+    lgamma(mu * phi) -
+    lgamma((1 - mu) * phi) +
+    (mu * phi - 1) * log(y) +
+    ((1 - mu) * phi - 1) * log(1 - y)
+  if (sum) {
+    return(sum(ll))
+  }else{
+    return(ll)
   }
+}
+
+# --- function for negative log-likelihood ---
+neg_loglik <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01) {
+  beta  <- par["beta"]
+  delta <- par["delta"]
+  gamma <- par["gamma"]
+  kappa <- par["kappa"]
+  phi   <- par["phi"]
   
-  return(list(theta = theta, history = param_history))
+  dispersal <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa)
+  eta <- beta + delta * y_prev + gamma * dispersal
+  mu  <- inv_logit(eta)
+
+  -loglik_beta(y_current, mu, phi)
+}
+
+# --- function for gradients ---
+neg_grad <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01) {
+  beta  <- par["beta"]
+  delta <- par["delta"]
+  gamma <- par["gamma"]
+  kappa <- par["kappa"]
+  phi   <- par["phi"]
+  
+  dispersal <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa)
+  eta <- beta + delta * y_prev + gamma * dispersal
+  mu  <- inv_logit(eta)
+  
+  y_star <- logit(y_current)
+  mu_star <- digamma(mu * phi) - digamma((1 - mu) * phi)
+  weight <- (y_star - mu_star) * mu * (1 - mu)
+  
+  d_beta  <-  phi * sum(weight)
+  d_delta <-  phi * sum(weight * y_prev)
+  d_gamma <-  phi * sum(weight * dispersal)
+  d_kappa <-  phi * sum(weight * (-gamma) * kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa, derivative = TRUE))
+  d_phi   <-  sum(mu * (y_star - mu_star) + log(1 - y_current) - digamma((1 - mu) * phi) + digamma(phi))
+  
+  # Return negative gradients
+  -c(beta = d_beta, delta = d_delta, gamma = d_gamma, kappa = d_kappa, phi = d_phi)
 }

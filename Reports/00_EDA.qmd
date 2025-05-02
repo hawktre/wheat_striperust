@@ -213,6 +213,7 @@ inoc_sp <- left_join(inoculum, inoc_key, by = "plot") %>%
   mutate(block = str_split_i(plot, "", 1),
          plot_inoc_id = paste0(block, inoculum_total))
 
+saveRDS(inoc_sp, here("DataProcessed/experimental/inoc_sp.rds"))
 raw_spplot <- function(exp.dat, inoc.dat, block){
   # Filter for the block we want
   stripe.dat <- exp.dat %>% filter(block == {{block}})
