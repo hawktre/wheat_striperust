@@ -22,7 +22,7 @@ library(here)
 
 
 # Read in results & Data ---------------------------------------------------------
-fits <- readRDS(here("DataProcessed/results/fits_by_gamma_max.rds"))
+fits <- readRDS(here("DataProcessed/results/all_fits.rds"))
 
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat.rds"))
 
@@ -43,39 +43,58 @@ compute_deviance_resid <- function(y, mu_hat, phi_hat) {
 }
 
 # Get predictions & residuals ---------------------------------------------------------
-fits_200 <- fits$`200`
-for (plt_visit in names(fits_200)) {
-    #Subset visit and data
-    fit <- fits_200[[plt_visit]]
-    dat <- mod_dat[[fit$plot_id]][[fit$visit]]
-    
-    #Subset the parameters
-    params <- unlist(fit$theta)
-    
-    #Create covariates
-    X1 <- dat$y_prev
-    X2 <- kappa_inner_sum(y_prev = dat$y_prev,
-                          wind_matrix = dat$wind_mat,
-                          dist_matrix = dat$dist_mat,
-                          d0 = 0.01,
-                          kappa = params[['kappa']],
-                          derivative = F)
-    
-    mod_dat[[fit$plot_id]][[fit$visit]][['X2']] <- X2
-    
-    # Compute predictions
-    y_pred <- params[['beta']] + params[['delta']]*X1 + params[['gamma']]*X2
-    dev_resid <- compute_deviance_resid(y = dat$y_cur, mu_hat = inv_logit(y_pred), phi_hat = params[['phi']])
-    dev <- sum(dev_resid^2)
-    # Assign predictions and residuals
-    fits_200[[plt_visit]]$y_pred <- list(y_pred)
-    fits_200[[plt_visit]]$resid <- list(dev_resid) 
-    fits_200[[plt_visit]]$deviance <- dev 
-    
-    #Assign th the data object for plotting
-    mod_dat[[fit$plot_id]][[fit$visit]][['y_pred']] <- inv_logit(y_pred)
-    mod_dat[[fit$plot_id]][[fit$visit]][['dev_resid']] <- dev_resid
+fit.summarise <- function(fits, mod_dat){
+  for (plt_visit in names(fits)) {
+      #Subset visit and data
+      fit <- fits[[plt_visit]]
+      dat <- mod_dat[[fit$plot_id]][[fit$visit]]
+      
+      #Subset the parameters
+      params <- unlist(fit$theta)
+      
+      #Create covariates
+      X1 <- dat$y_prev
+      X2 <- kappa_inner_sum(y_prev = dat$y_prev,
+                            wind_matrix = dat$wind_mat,
+                            dist_matrix = dat$dist_mat,
+                            d0 = 0.01,
+                            kappa = params[['kappa']],
+                            derivative = F)
+      
+      mod_dat[[fit$plot_id]][[fit$visit]][['X2']] <- X2
+      
+      # Compute predictions
+      y_pred <- params[['beta']] + params[['delta']]*X1 + params[['gamma']]*X2
+      dev_resid <- compute_deviance_resid(y = dat$y_cur, mu_hat = inv_logit(y_pred), phi_hat = params[['phi']])
+      dev <- sum(dev_resid^2)
+      # Assign predictions and residuals
+      fits[[plt_visit]]$y_pred <- list(y_pred)
+      fits[[plt_visit]]$resid <- list(dev_resid) 
+      fits[[plt_visit]]$deviance <- dev 
+      
+      #Assign th the data object for plotting
+      mod_dat[[fit$plot_id]][[fit$visit]][['y_pred']] <- inv_logit(y_pred)
+      mod_dat[[fit$plot_id]][[fit$visit]][['dev_resid']] <- dev_resid
+      
+      
+  }
+  return(list(fits = fits,
+              mod_dat = mod_dat))
 }
 
-saveRDS(fits_200, here("DataProcessed/results/fits_final.rds"))
-saveRDS(mod_dat, here("DataProcessed/results/mod_dat_appended.rds"))
+# Apply fit.summarise to free model
+out_free <- fit.summarise(fits$free, mod_dat)
+
+# Apply fit.summarise to each constrained model using map
+out_constrained <- map(
+  names(fits$constrained),
+  ~ fit.summarise(fits$constrained[[.x]], mod_dat)
+)
+
+# Assign names to the result
+names(out_constrained) <- paste0("gamma_", names(fits$constrained))
+
+out_all <- c("gamma_free" = list(out_free),
+                out_constrained)
+
+saveRDS(out_all, here("DataProcessed/results/fits_appended.rds"))

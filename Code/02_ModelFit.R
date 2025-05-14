@@ -72,6 +72,9 @@ for (i in 1:nrow(survey_periods)){
   #Subset y_cur
   y_cur <- plot_dat$intensity
   
+  #y_cur > 0?
+  z <- if_else(y_cur == 0, 0, 1)
+  
   #Get Plant ID
   plant_id <- plot_dat$plant_id
   
@@ -92,6 +95,7 @@ for (i in 1:nrow(survey_periods)){
   
   mod_dat[[cur.plot]][[cur.visit]] <- list("y_prev" = y_prev,
                                        "y_cur" = y_cur,
+                                       "diseased" = z,
                                        "plant_id" = plant_id,
                                        "dist_mat" = dist_dir$dist,
                                        "dir_mat" = dist_dir$dir,
@@ -104,7 +108,7 @@ saveRDS(mod_dat, here("DataProcessed/experimental/mod_dat.rds"))
 
 # Fit the model (unconstrained) -------------------------------------------
 
-all_fits <- list()
+free_fits <- list()
 
 for (plot_id in names(mod_dat)) {
   plot_visits <- mod_dat[[plot_id]]
@@ -114,6 +118,7 @@ for (plot_id in names(mod_dat)) {
     results <- list()
     
     for (i in seq_along(dat$theta_init)) {
+      
       init_theta <- dat$theta_init[[i]]
       
       fit <- tryCatch({
@@ -146,19 +151,17 @@ for (plot_id in names(mod_dat)) {
     if (length(results) > 0) {
       visit_df <- bind_rows(results) %>% arrange(neg_loglik)
       best_fit <- visit_df %>% slice(1)
-      all_fits[[paste(plot_id, visit_name, sep = "_")]] <- best_fit
+      free_fits[[paste(plot_id, visit_name, sep = "_")]] <- best_fit
     }
   }
 }
-
-saveRDS(all_fits, here("DataProcessed/results/fits_free.rds"))
 
 # Fit the model (constrained) ------------------------------------------------------
 # Define gamma upper bounds to try
 gamma_max_vals <- c(100, 200, 500, 1000)
 
 # Store results for each gamma max
-all_fit_results <- list()
+constrained_fits <- list()
 
 # Loop over gamma_max values
 for (gamma_max in gamma_max_vals) {
@@ -169,7 +172,7 @@ for (gamma_max in gamma_max_vals) {
   lower_bounds <- c(-Inf, -Inf, -Inf, -Inf, 0.01)
   upper_bounds <- c(Inf, Inf, gamma_max, Inf, Inf)
   
-  all_fits <- list()
+  fits <- list()
   
   for (plot_id in names(mod_dat)) {
     plot_visits <- mod_dat[[plot_id]]
@@ -214,20 +217,19 @@ for (gamma_max in gamma_max_vals) {
       if (length(results) > 0) {
         visit_df <- bind_rows(results) %>% arrange(neg_loglik)
         best_fit <- visit_df %>% slice(1)
-        all_fits[[paste(plot_id, visit_name, sep = "_")]] <- best_fit
+        fits[[paste(plot_id, visit_name, sep = "_")]] <- best_fit
       }
     }
   }
   
   # Store results for this gamma_max
-  all_fit_results[[as.character(gamma_max)]] <- all_fits
+  constrained_fits[[as.character(gamma_max)]] <- fits
 }
 
+all_fits <- list(free = free_fits,
+                 constrained = constrained_fits)
+
 # Save all fits from all gamma_max values
-write_rds(all_fit_results, here("DataProcessed/results/fits_by_gamma_max.rds"))
+write_rds(all_fits, here("DataProcessed/results/all_fits.rds"))
 
-greek_cols <- wesanderson::wes_palette("Darjeeling1", 5, type = "discrete")
-
-
-# Plot constrained fits ---------------------------------------------------
 

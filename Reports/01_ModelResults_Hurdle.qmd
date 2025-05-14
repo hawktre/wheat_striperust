@@ -1,6 +1,6 @@
 ---
 title: "Spread of Wheat Stripe Rust in an Experimental Framework"
-subtitle: "Preliminary Results"
+subtitle: "Preliminary Results: Accounting for non-diseased plants"
 author:   
   - name: Trent VanHawkins
     affiliations:
@@ -46,7 +46,7 @@ bibliography: references.bib
 
 # Introduction
 
-In previous the previous EDA and report, we documented exploratory analyses and data cleaning procedures for data assessing the infection and spread of Stripe Rust (*Puccinia stiiformis*) among Wheat plants using data collected as part of an experimental procedure conducted between April and July of 2024 at the Hyslop Crop Science Field Laboratory in Benton County, Oregon. Following this procedure, we analyzed the work by @gent2019 and @ojwang2021, which focused on prediction and inference for the spread of Hop Powdery Mildew (*Humulus lupulus*), and adapted their modeling framework to the present experimental data. Here, we explore preliminary results for fitting the derived models, and discuss their limitations and potential next steps.
+In previous the previous EDA report, we documented exploratory analyses and data cleaning procedures for data assessing the infection and spread of Stripe Rust (*Puccinia stiiformis*) among Wheat plants using data collected as part of an experimental procedure conducted between April and July of 2024 at the Hyslop Crop Science Field Laboratory in Benton County, Oregon. Following this procedure, we analyzed the work by @gent2019 and @ojwang2021, which focused on prediction and inference for the spread of Hop Powdery Mildew (*Humulus lupulus*), and adapted their modeling framework to the present experimental data. We then explored preliminary results using the proposed modeling framework. One clear conclusion from early results, was that the presence of 0's in the model was leading to non-convergence and/or an undefined log-likelihood early on in disease propagation. Here, we explore the use of a 'Hurdle' model to account for early non-diseased plants. 
 
 # Methods
 
@@ -62,27 +62,35 @@ Survey data, along with inoculum locations were provided by Chris Mundt. Additio
 
 ## Modeling Framework
 
-We assume that the observed disease prevalence $Y$ at sample location $i$ and time $t$ follows a Beta distribution with mean parameter $\mu_{i,t}$ and precision parameter $\phi_t$, ignoring indices for block and replicate:
+The present model being considered is the similar to that described in the model considerations report and the preliminary results report. Now, let us consider an additional random variable $Z_{i,t} \sim \text{Bernoulli}(\pi_t)$ which is defined as 
 
 $$
-Y_{i,t} \overset{\text{indep.}}{\sim} \text{Beta}(\mu_{i,t}, \phi_t)
-$$ Under this parameterization, we have that
+Z_{i,t} = \begin{cases} 1 & y_{i,t} = 0 \\
+0 & y_{i,t} > 0\end{cases}
+$$
+That is, we define diseased plants as those that have > 0% infected tissue. Now, we can consider the conditional distribution 
 
 $$
-E[y] = \mu \quad 0 < \mu < 1; \quad  \text{and} \quad \text{Var}[y] = \frac{\mu(1-\mu)}{1 + \phi} \quad \phi > 0
-$$ That is, for $Y_{i,t} \mid \boldsymbol{x}_{i,t} \overset{\text{indep.}}{\sim} \text{Beta}(\mu_{i,t}, \phi_t)$, we estimate a unique mean response $\mu_{i,t}$ for each sample location and time point, while assuming a shared precision parameter $\phi_t$ across locations within a given time.
+y_{i,t} | z_{i,t} = \begin{cases}0 & z_{i,t} = 0\\
+\text{Beta}(\mu_{i,t}\phi_t, (1 - \mu_{i,t}) \phi_t) & z_{i,t} = 1 \end{cases}
+$$
 
-Following the framework in @gent2019, the problem we have before us is that of a non-linear least squares--where we would like to model the mean parameter $\mu_{i,t}$ but also need to estimate the parameter $\phi_t$ under the new framework. Here, we propose a mean structure appropriate for the current experimental framework using the logit-link:
+The marginal expectation is then given by 
+
+$$
+\begin{split}
+\E{y_{i,t}|Z_{i,t}} &= 0 \times P(Z_{i,t} = 0) + P(Z_{i,t} = 1) \times \E{y_{i,t}} \\
+&= (1 - \pi_t) \times \mu_{i,t}
+\end{split}
+$$
+
+Recall that, following the framework in @gent2019, we propose a mean structure for non-zero observations using the logit-link:
 
 $$
 \log\left(\frac{\mu_{i,t}}{1-\mu_{i,t}}\right) = \eta_{i,t} = \beta+ \delta y_{i,t-1} + \gamma\sum_{j \neq i}\left(y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}\right)
 $$ {#eq-meanmod}
 
-Variables, parameters definitions, and interpretations for @eq-meanmod are outlined in @tbl-covars. Note some differences from @gent2019 for the proposed formulation of the mean structure:
-
-1.  There is no longer a need to scale $y_{j,t-1}$ by the size as all blocks are the same size ($30.5 \times 30.5$ m) with the same density of plants.
-
-2.  We also opt to use the scale-invariant power-law kernel as opposed to an exponential kernel to model spatial decay of disease transmission from the target.
+Variables, parameters definitions, and interpretations for @eq-meanmod are outlined in @tbl-covars.
 
 ::: {#tbl-covars}
 | Variable | Description |
@@ -107,7 +115,13 @@ Variables, parameters definitions, and interpretations for @eq-meanmod are outli
 Interpretations for model variables and parameters under the current formulation.
 :::
 
-We fit the model using the `optim()` function in `{r} R.version.string` with the quasi-Newton optimization method L-BFGS-B. Initial values for the optimization were generated by fixing $\kappa^{(1)} \in {1, 1.5, 2, \ldots, 5}$ to temporarily linearize Equation @eq-meanmod, and then fitting $(\beta, \delta, \gamma)$ using ordinary least squares. The precision parameter $\phi$ was initialized using a method of moments estimator. To evaluate parameter sensitivity, we fit the model both with and without constraints on $\gamma$ and $\phi$; final constraints were set as $\gamma < 200$ and $\phi > 0$ to ensure numerical stability and identifiability. Complete derivations and implementation details, including computations for the wind projection $w_{ij}$, are provided in the supplementary document, "00a_ModelingConsiderations.qmd".
+Here, we estimate $\pi_t$ using the MLE. For $n$ observations, we have 
+
+$$
+\hat\pi_t = \frac{1}{n} \nsum Z_{i,t}
+$$
+
+We then fit the model for non-zero observations using the `optim()` function in `{r} R.version.string` with the quasi-Newton optimization method BFGS. Initial values for the optimization were generated by fixing $\kappa^{(1)} \in {1, 1.5, 2, \ldots, 5}$ to temporarily linearize Equation @eq-meanmod, and then fitting $(\beta, \delta, \gamma)$ using ordinary least squares. The precision parameter $\phi$ was initialized using a method of moments estimator.  Complete derivations and implementation details, including computations for the wind projection $w_{ij}$, are provided in the supplementary document, "00a_ModelingConsiderations.qmd".
 
 # Results
 
@@ -227,12 +241,7 @@ survey_periods %>%
 
 ```{r}
 #| label: fig-params
-#| layout-nrow: 2
 #| fig-cap: "Parameter estimates reported for each transition (e.g. 'Visit 2' denotes the transition from 'Visit 1' to 'Visit 2') on the log-odds scale."
-#| fig-subcap: 
-#|    - "Parameter estimates for unconstrained optimization."
-#|    - "Parameter estimates for constrained optimization with $\\gamma < 200, \\phi > 0$."
-#| fig-cap-location: top
 #| fig-width: 10
 #| fig-height: 8
 library(tidyverse)
@@ -244,13 +253,10 @@ greek_cols <- RColorBrewer::brewer.pal(5, "Set1")
 #Read in results
 
 ## Fits results
-fits <- readRDS(here("DataProcessed/results/fits_appended.rds"))
-
-fits_free <- bind_rows(fits$gamma_free$fits)
-fits_200 <- bind_rows(fits$gamma_200$fits)
+fits <- readRDS(here("DataProcessed/results/fits_appended_hurdle.rds"))
 
 #Pivot-longer for tables and plotting
-theta_long_200 <- fits_200 %>%
+theta_long <- bind_rows(fits$fits) %>%
   select(plot_id, visit, theta) %>%
   unnest_wider(theta) %>%         # Step 2: unpack theta list column
   pivot_longer(
@@ -258,9 +264,9 @@ theta_long_200 <- fits_200 %>%
     names_to = "parameter",
     values_to = "estimate"
   ) %>% 
-  mutate(visit_num = as.numeric(str_extract(visit, "\\d+")))
+  mutate(visit_num = parse_number(visit))
 
-theta_200 <- theta_long_200 %>% 
+theta_long %>% 
   ggplot(aes(x = visit_num, y = estimate, colour = parameter)) +
   geom_point(size = 2) +
   geom_line(linewidth = 1) +
@@ -281,42 +287,6 @@ theta_200 <- theta_long_200 %>%
     )
   ) +
   theme(legend.position = "bottom")
-
-#Pivot-longer for tables and plotting
-theta_long_free <- fits_free %>%
-  select(plot_id, visit, theta) %>%
-  unnest_wider(theta) %>%         # Step 2: unpack theta list column
-  pivot_longer(
-    cols = c(beta, delta, gamma, kappa, phi),  # adjust if other parameters present
-    names_to = "parameter",
-    values_to = "estimate"
-  ) %>% 
-  mutate(visit_num = as.numeric(str_extract(visit, "\\d+")))
-
-theta_free <- theta_long_free %>% 
-  ggplot(aes(x = visit_num, y = estimate, colour = parameter)) +
-  geom_point(size = 2) +
-  geom_line(linewidth = 1) +
-  facet_wrap(~ plot_id, nrow = 4, ncol = 3, scales = "free_y") +
-  labs(y = "Estimate", 
-       x = "Visit", 
-       title = expression(bold(theta)~"over visits (2–5), "~gamma[max]~"= Inf")) +
-  scale_color_manual(
-    name = "Parameter",
-    values = c("beta" = greek_cols[1], "delta" = greek_cols[2], "gamma" = greek_cols[3], 
-               "kappa" = greek_cols[4], "phi" = greek_cols[5]),
-    labels = c(
-      beta = expression(beta),
-      delta = expression(delta),
-      gamma = expression(gamma),
-      kappa = expression(kappa),
-      phi = expression(phi)
-    )
-  ) +
-  theme(legend.position = "bottom")
-
-theta_free
-theta_200
 ```
 
 We also provide a tabular summary of the mode estimates in @tbl-params. However, it is important to note that constrained optimization can introduce bias in parameter estimates. We quantify this potential bias in @tbl-bias in the appendix. As a general observation, when parameters are allowed to vary freely, the dispersal parameter $\gamma$ is often optimized at the boundary of the parameter space, and other parameters may take on extreme values to compensate. Imposing an upper bound on $\gamma$ appears to moderately regularize this behavior, although some exceptions remain.
@@ -324,7 +294,7 @@ We also provide a tabular summary of the mode estimates in @tbl-params. However,
 ```{r}
 #| label: tbl-params
 #| tbl-cap: "Tabular parameter estimes reported for each transition (e.g. 'Visit 2' denotes the transition from 'Visit 1' to 'Visit 2') on the log-odds scale, matching with @fig-params for the constrained model fit ($\\gamma < 200, \\phi > 0$)."
-fits_200 %>%
+bind_rows(fits$fits) %>%
   select(plot_id, visit, init_kappa, theta) %>%
   unnest_wider(theta) %>%
   kableExtra::kable(
@@ -344,7 +314,7 @@ fits_200 %>%
 
 From @fig-params and @tbl-params, we can make some initial observations. It is a common trend among all plots for the parameters $\beta$, $\delta$, and $\phi$ is tend toward 0 as transitions progress. It is also apparent that $\gamma$ is frequently optimized on the border of the constrained parameter space ($\leq 200$), indicating a strong and persistent signal for pathogen dispersal via wind--particularly at early transitions. Finally, note that some of the plots' parameter estimates did not converge for the earliest time points (A1, C1, C4).
 
-Finally, for one of the plots with predictions at every transition, we can visualize predictions and deviance residuals to get an idea of the predictive power of the current models. @fig-prediction shows a visualization of true vs. predicted values for the treatments in block B.
+Finally, we can visualize predictions and deviance residuals to get an idea of the predictive power of the current models. @fig-prediction shows a visualization of true vs. predicted values for the treatments in block B.
 
 ```{r}
 #| label: fig-prediction
@@ -353,16 +323,11 @@ Finally, for one of the plots with predictions at every transition, we can visua
 library(sf)
 library(ggpubr)
 #Create a dataframe with all of the predicted results and true values
-df <- map_dfr(names(fits$gamma_200$mod_dat), function(plot_id) {
-  plot_obj <- fits$gamma_200$mod_dat[[plot_id]]
-  
-  if (!is.list(plot_obj)) return(NULL)  # skip if not a list
+df <- map_dfr(names(fits$mod_dat), function(plot_id) {
+  plot_obj <- fits$mod_dat[[plot_id]]
   
   map_dfr(names(plot_obj), function(visit) {
     visit_obj <- plot_obj[[visit]]
-    
-    if (!is.list(visit_obj)) return(NULL)  # skip if visit entry is missing or malformed
-    if (is.null(visit_obj$y_cur) || is.null(visit_obj$y_pred)) return(NULL)
     
     n <- length(visit_obj$y_cur)  # assumes y_cur and y_pred are same length
     
@@ -370,9 +335,8 @@ df <- map_dfr(names(fits$gamma_200$mod_dat), function(plot_id) {
       plot_id = rep(plot_id, n),
       visit = rep(visit, n),
       y_cur = visit_obj$y_cur,
-      y_pred = visit_obj$y_pred,
-      plant_id = visit_obj$plant_id,
-      dev_resid = visit_obj$dev_resid
+      y_pred = visit_obj$y_pred_marginal,
+      plant_id = visit_obj$plant_id
     )
   })
 })
@@ -415,9 +379,9 @@ pred_spplot <- function(exp.dat, inoc.dat, plot_id){
     theme(legend.position = "bottom")
 }
 
-plt_b1 <- pred_spplot(df_long, inoc_sp, plot_id = "B1")
-plt_b2 <- pred_spplot(df_long, inoc_sp, plot_id = "B2")
-plt_b4 <- pred_spplot(df_long, inoc_sp, plot_id = "B4")
+plt_b1 <- pred_spplot(df_long, inoc_sp, plot_id = "C1")
+plt_b2 <- pred_spplot(df_long, inoc_sp, plot_id = "C2")
+plt_b4 <- pred_spplot(df_long, inoc_sp, plot_id = "C4")
 
 ggarrange(plotlist = list(plt_b1, plt_b2, plt_b4), nrow = 3, ncol = 1)
 ```
