@@ -46,7 +46,7 @@ library(here)
 
 
 # Read in results & Data ---------------------------------------------------------
-fits <- readRDS(here("DataProcessed/results/all_fits_hurdle.rds"))
+fits <- readRDS(here("DataProcessed/results/all_fits_hurdle_logistic.rds"))
 
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat.rds"))
 
@@ -62,6 +62,7 @@ compute_deviance_resid <- function(y, mu_hat, pi, phi_hat) {
   ll_fit <- loglik_beta(y, mu_hat, phi_hat, sum = F)
   
   sqrt_term <- pmax(0, 2 * (ll_sat - ll_fit))
+  
   # Deviance residuals
   sign(y - mu_hat) * sqrt(sqrt_term)
 }
@@ -78,7 +79,7 @@ fit.summarise <- function(fits, mod_dat){
     pi <- fit$pi
     
     #Create covariates
-    X1 <- dat$y_prev
+    X1 <- dat$y_prev * (1 - dat$y_prev)
     X2 <- kappa_inner_sum(y_prev = dat$y_prev,
                           wind_matrix = dat$wind_mat,
                           dist_matrix = dat$dist_mat,
@@ -91,7 +92,7 @@ fit.summarise <- function(fits, mod_dat){
     # Compute predictions
     eta <- params[['beta']] + params[['delta']]*X1 + params[['gamma']]*X2
     mu_hat <- inv_logit(eta)
-    dev_resid <- compute_deviance_resid(y = dat$y_cur[which(dat$y_cur != 0)], mu_hat = mu_hat[which(dat$y_cur != 0)], phi_hat = params[['phi']])
+    dev_resid <- compute_deviance_resid(y = dat$y_cur, mu_hat = mu_hat, phi_hat = params[['phi']])
     dev <- sum(dev_resid^2)
     # Assign predictions and residuals
     fits[[plt_visit]]$y_pred <- list(mu_hat)
@@ -110,8 +111,15 @@ fit.summarise <- function(fits, mod_dat){
 }
 
 # Apply fit.summarise to free model
-out <- fit.summarise(fits, mod_dat)
+out_free <- fit.summarise(fits$free, mod_dat)
 
+out_constrained <- list()
+for (gamma_max in names(fits$constrained)) {
+  fit <- fits$constrained[[gamma_max]]
+  
+  out_constrained[[gamma_max]] <- fit.summarise(fit, mod_dat)
+} 
 
-saveRDS(out, here("DataProcessed/results/fits_appended_hurdle.rds"))
+out_all <- list("free" = out_free, "constrained" = out_constrained)
+saveRDS(out_all, here("DataProcessed/results/fits_appended_hurdle_logistic.rds"))
 

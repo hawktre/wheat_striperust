@@ -134,6 +134,8 @@ neg_loglik <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.
   dispersal <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa)
   eta <- beta + delta * y_prev + gamma * dispersal
   mu  <- inv_logit(eta)
+  mu <- pmin(pmax(mu, 1e-6), 1 - 1e-6)
+  phi <- pmax(phi, 1e-6)
 
   -loglik_beta(y_current, mu, phi)
 }
@@ -149,6 +151,8 @@ neg_grad <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01
   dispersal <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa)
   eta <- beta + delta * y_prev + gamma * dispersal
   mu  <- inv_logit(eta)
+  mu <- pmin(pmax(mu, 1e-6), 1 - 1e-6)
+  phi <- pmax(phi, 1e-6)
   
   y_star <- logit(y_current)
   mu_star <- digamma(mu * phi) - digamma((1 - mu) * phi)
@@ -156,6 +160,33 @@ neg_grad <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01
   
   d_beta  <-  phi * sum(weight)
   d_delta <-  phi * sum(weight * y_prev)
+  d_gamma <-  phi * sum(weight * dispersal)
+  d_kappa <-  phi * sum(weight * (-gamma) * kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa, derivative = TRUE))
+  d_phi   <-  sum(mu * (y_star - mu_star) + log(1 - y_current) - digamma((1 - mu) * phi) + digamma(phi))
+  
+  # Return negative gradients
+  -c(beta = d_beta, delta = d_delta, gamma = d_gamma, kappa = d_kappa, phi = d_phi)
+}
+
+neg_grad_logistic <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01) {
+  beta  <- par["beta"]
+  delta <- par["delta"]
+  gamma <- par["gamma"]
+  kappa <- par["kappa"]
+  phi   <- par["phi"]
+  
+  dispersal <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa)
+  eta <- beta + delta * (y_prev * (1-y_prev)) + gamma * dispersal
+  mu  <- inv_logit(eta)
+  mu <- pmin(pmax(mu, 1e-6), 1 - 1e-6)
+  phi <- pmax(phi, 1e-6)
+  
+  y_star <- logit(y_current)
+  mu_star <- digamma(mu * phi) - digamma((1 - mu) * phi)
+  weight <- (y_star - mu_star) * mu * (1 - mu)
+  
+  d_beta  <-  phi * sum(weight)
+  d_delta <-  phi * sum(weight * y_prev * (1-y_prev))
   d_gamma <-  phi * sum(weight * dispersal)
   d_kappa <-  phi * sum(weight * (-gamma) * kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa, derivative = TRUE))
   d_phi   <-  sum(mu * (y_star - mu_star) + log(1 - y_current) - digamma((1 - mu) * phi) + digamma(phi))

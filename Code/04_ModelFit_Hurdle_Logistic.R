@@ -1,5 +1,36 @@
 ## ---------------------------
 ##
+## Script name: 04_ModelFit_Hurdle_Logistic.R
+##
+## Purpose of script: Fit model with logistic autoinfection term
+##
+## Author: Trent VanHawkins
+##
+## Date Created: 2025-05-16
+##
+##
+## ---------------------------
+##
+## Notes:
+##   
+##
+## ---------------------------
+
+## ---------------------------
+
+## view outputs in non-scientific notation
+
+options(scipen = 6, digits = 4) 
+
+## ---------------------------
+
+## load up the packages we will need:  (uncomment as required)
+
+library(tidyverse)
+library(here)
+
+## ---------------------------
+##
 ## Script name: 03_ModelFit_ZIB.R
 ##
 ## Purpose of script: Fit a zero-inflated beta model 
@@ -58,7 +89,7 @@ for (plot_id in names(mod_dat)) {
         optim(
           par = init_theta,
           fn = neg_loglik,
-          gr = neg_grad,
+          gr = neg_grad_logistic,
           method = "BFGS",
           control = list(maxit = 5000, reltol = 1e-8),
           y_current = dat$y_cur[non_zero],
@@ -129,7 +160,7 @@ for (gamma_max in gamma_max_vals) {
           optim(
             par = init_theta,
             fn = neg_loglik,
-            gr = neg_grad,
+            gr = neg_grad_logistic,
             method = "L-BFGS-B",
             lower = lower_bounds,
             upper = upper_bounds,
@@ -169,4 +200,5 @@ for (gamma_max in gamma_max_vals) {
 }
 
 all_fits <- list("free" = free_fits, "constrained" = constrained_fits)
-saveRDS(all_fits, here("DataProcessed/results/all_fits_hurdle.rds"))
+saveRDS(all_fits, here("DataProcessed/results/all_fits_hurdle_logistic.rds"))
+

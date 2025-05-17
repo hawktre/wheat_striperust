@@ -94,7 +94,7 @@ That is, for $Y_{i,t} \mid \boldsymbol{x}_{i,t} \overset{\text{indep.}}{\sim} \t
 Following the framework in @gent2019, the problem we have before us is that of a non-linear least squares -- where we would like to model the mean parameter $\mu_{i,t}$ but also need to estimate the parameter $\phi_t$ under the new framework. In previous work, for $Y_{i,t} \mid \mathbf{x}_{i,t} \overset{\text{indep.}}{\sim} b(n_{i,t},p_{i,t})$ the parameter $p_{i,t}$ was modeled as
 
 $$
-\log\bigpar{\frac{p_{i,t}}{1-p_{i,t}} } = \eta_{i,t} = \beta + \delta\bigpar{\frac{y_{i,t-1}}{n_{i,t-1}}} + \gamma \sum_{i \neq j }\bigpar{\frac{a_j y_{j,t-1}}{n_{j,t-1}w_{ij}}\Exp{-\alpha d_{ij}}}
+\log\bigpar{\frac{p_{i,t}}{1-p_{i,t}} } = \eta_{i,t} = \beta + \delta\bigpar{\frac{y_{i,t-1}}{n_{i,t-1}}} + \gamma \sum_{i \neq j }\bigpar{\frac{a_j y_{j,t-1}}{n_{j,t-1}}w_{ij}\Exp{-\alpha d_{ij}}}
 $$ {#eq-oldmod}
 
 where:

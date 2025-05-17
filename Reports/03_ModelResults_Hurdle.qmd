@@ -1,0 +1,630 @@
+---
+title: "Spread of Wheat Stripe Rust in an Experimental Framework"
+subtitle: "Preliminary Results: Accounting for non-diseased plants"
+author:   
+  - name: Trent VanHawkins
+    affiliations:
+      - ref: osu
+    degrees: MS
+    corresponding: true
+  - name: Christopher Mundt
+    affiliations:
+      - ref: osu
+    degrees: PhD
+  - name: David Gent
+    affiliations:
+      - ref: usda
+      - ref: osu
+    degrees: PhD
+  - name: Shirshendu Chatterjee
+    affiliations:
+      - ref: nyu
+  - name: Sharmodeep Bhattacharyya
+    affiliations:
+      - ref: osu
+    degrees: PhD
+affiliations:
+  - id: osu
+    name: Oregon State University
+  - id: usda
+    name: U.S. Department of Agriculture
+  - id: nyu
+    name: City University of New York
+format: html
+embed-resources: true
+toc: true
+code-fold: true
+execute: 
+  warning: false
+code-links:
+  - text: GitHub Repository
+    href: https://github.com/hawktre/wheat_striperust
+page-layout: full
+references: references.bib
+bibliography: references.bib
+---
+
+# Introduction
+
+In previous the previous EDA report, we documented exploratory analyses and data cleaning procedures for data assessing the infection and spread of Stripe Rust (*Puccinia stiiformis*) among Wheat plants using data collected as part of an experimental procedure conducted between April and July of 2024 at the Hyslop Crop Science Field Laboratory in Benton County, Oregon. Following this procedure, we analyzed the work by @gent2019 and @ojwang2021, which focused on prediction and inference for the spread of Hop Powdery Mildew (*Humulus lupulus*), and adapted their modeling framework to the present experimental data. We then explored preliminary results using the proposed modeling framework. One clear conclusion from early results, was that the presence of 0's in the model was leading to non-convergence and/or an undefined log-likelihood early on in disease propagation. Here, we explore the use of a 'Hurdle' model to account for early non-diseased plants. 
+
+# Methods
+
+We extensively document the derivation of the present methodology in the previous report, titled "Modeling Considerations". Here, we briefly highlight those aspects of experimental design and model development which are essential to interpreting model results.
+
+## Experimental Design
+
+This experiment was conducted between the months of April and July of 2024 at the Hyslop Crop Science Field Laboratory in Benton County, Oregon. Wheat was planted in one of four blocks (labeled A-D), each containing three replicates (plots). Within each block, each $30.5 \times 30.5$ m plot was inoculated with spores from *Puccinia stiiformis* at one, two, or four locations of equal size ($0.76 \times 0.76$ m) between April 9th and April 25th, 2024. After approximately one month, plots were surveyed weekly for **five** consecutive weeks beginning May 17th, 2024. At each survey, domain experts visually estimated disease prevalence in $1.52 \times 1.52$ m grids, expressed as a percentage (0-100) of infected plant tissue within the sampling grid. Individual sampling locations are distinguished by their distance from the plot origin in meters. Further details of the experimental design may be found on pages 6 & 7 of the EEID Project Grant.
+
+## Data Acquisition, Cleaning, and Exploration
+
+Survey data, along with inoculum locations were provided by Chris Mundt. Additional data capturing wind speed (mph) and direction (degrees azimuth) were acquired from a local weather station \<1 km from the survey locations at a 15-minute resolution for the duration of the study period.
+
+## Modeling Framework
+
+The present model being considered is the similar to that described in the model considerations report and the preliminary results report. Now, let us consider an additional random variable $Z_{i,t} \sim \text{Bernoulli}(\pi_t)$ which is defined as 
+
+$$
+Z_{i,t} = \begin{cases} 1 & y_{i,t} = 0 \\
+0 & y_{i,t} > 0\end{cases}
+$$
+That is, we define diseased plants as those that have > 0% infected tissue. Now, we can consider the conditional distribution 
+
+$$
+y_{i,t} | z_{i,t} = \begin{cases}0 & z_{i,t} = 0\\
+\text{Beta}(\mu_{i,t}\phi_t, (1 - \mu_{i,t}) \phi_t) & z_{i,t} = 1 \end{cases}
+$$
+
+The marginal expectation is then given by 
+
+$$
+\begin{split}
+\E{y_{i,t}|Z_{i,t}} &= 0 \times P(Z_{i,t} = 0) + P(Z_{i,t} = 1) \times \E{y_{i,t}} \\
+&= (1 - \pi_t) \times \mu_{i,t}
+\end{split}
+$$
+
+Recall that, following the framework in @gent2019, we propose a mean structure for non-zero observations using the logit-link:
+
+$$
+\log\left(\frac{\mu_{i,t}}{1-\mu_{i,t}}\right) = \eta_{i,t} = \beta+ \delta y_{i,t-1} + \gamma\sum_{j \neq i}\left(y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}\right)
+$$ {#eq-meanmod}
+
+Variables, parameters definitions, and interpretations for @eq-meanmod are outlined in @tbl-covars.
+
+::: {#tbl-covars}
+| Variable | Description |
+|:-----------------------------------|:-----------------------------------|
+| $y_{i,t-1}$ | Proportion of diseased plant tissue at survey unit $i$ in the previous time point. |
+| $y_{j,t-1}$ | Proportion of diseased plant tissue at survey unit $j$ in the previous time point. |
+| $w_{ij}$ | Wind vector on $i - j$ direction at the prior time point. |
+| $d_{ij}$ | Distance between survey unit $i$ and $j$. |
+| $d_0$ | A constant (optional) distance offset to avoid division errors at 0. |
+
+: Variable definitions for the proposed model. {#tbl-vars}
+
+| Parameter | Interpretation |
+|:-----------------------------------|:-----------------------------------|
+| $\beta$ | Baseline log-odds of disease, after accounting for autoinfection and disease spread. |
+| $\delta$ | Change in log-odds of disease associated with autoinfection for each survey unit. |
+| $\gamma$ | Distance-adjusted change in log-odds of disease associated with disease spread from other survey units, after accounting for autoinfection. |
+| $\kappa$ | Dispersal parameter providing distance adjustment to change in log-odds of disease associated with individual sources; scales latter non-linearly with distance away from target. |
+
+: Model parameters and interpretations from the proposed model. {#tbl-params}
+
+Interpretations for model variables and parameters under the current formulation.
+:::
+
+Here, we estimate $\pi_t$ using the MLE. For $n$ observations, we have 
+
+$$
+\hat\pi_t = \frac{1}{n} \sum_{i=1}^n Z_{i,t}
+$$
+
+We then fit the model for non-zero observations using the `optim()` function in `{r} R.version.string` with the quasi-Newton optimization method BFGS. Initial values for the optimization were generated by fixing $\kappa^{(1)} \in {1, 1.5, 2, \ldots, 5}$ to temporarily linearize Equation @eq-meanmod, and then fitting $(\beta, \delta, \gamma)$ using ordinary least squares. The precision parameter $\phi$ was initialized using a method of moments estimator.  Complete derivations and implementation details, including computations for the wind projection $w_{ij}$, are provided in the supplementary document, "00a_ModelingConsiderations.qmd".
+
+# Results
+
+Recall that plots are organized by replicate blocks labeled A through D. Within each replicate, there were three treatment levels (one inoculation, two inoculations, or four inoculations). At each replicate-treatment combination, there were $n = 64$ sites systematically surveyed in a grid-layout. @tbl-disease summarizes disease intensity across surveys and includes the proportion of zero-infection plants at the first two visits.
+
+```{r}
+#| label: tbl-disease
+#| tbl-cap: "Summaries of disease intentisty (%) at each survey, reported mean(sd), in addition to the proportion of plants recorded as having no disease at surveys 1 and 2."
+library(tidyverse)
+library(here)
+library(gt)
+
+# Read in data
+stripe <- readRDS(here("DataProcessed/experimental/stripe_clean.rds"))
+
+stripe_summary <- stripe %>% 
+  group_by(plotID_new, visit) %>% 
+  summarise(mean_disease = paste0(round(mean(intensity), 2), "(", round(sd(intensity), 2), ")"),
+            zeros = paste0(sum(intensity == 0), "(", round(sum(intensity == 0)/n(), 3), ")"),
+            .groups = "drop") %>% 
+  ungroup()
+
+# pivot to wide format
+summary_wide <- stripe_summary %>%
+  pivot_wider(
+    names_from = visit,
+    values_from = c(mean_disease, zeros)
+  ) %>% 
+  select(-c(zeros_visit3, zeros_visit4, zeros_visit5))
+
+# make gt table
+summary_wide %>%
+  gt(rowname_col = "plotID_new") %>%
+  tab_spanner(
+    label = "Disease Intensity",
+    columns = starts_with("mean_disease")
+  ) %>%
+  tab_spanner(
+    label = "Zeros",
+    columns = starts_with("zeros")
+  ) %>%
+  cols_label(
+    .list = setNames(
+      nm = names(summary_wide)[-1],
+      object = gsub(".*_", "", names(summary_wide)[-1])  # clean column names
+    )
+  )
+
+```
+
+Also recall from @eq-meanmod that the dispersal term involves a projected wind vector denoted $w_{ij}$. Wind data were summarized for each inter-visit period, which spanned approximately one week. Summaries for wind run in each of the 16 inter-cardinal directions are provided in @fig-windsum, with survey periods defined in @tbl-periods
+
+```{r}
+#| label: fig-windsum
+#| fig-width: 10
+#| fig-cap: "Windroses for each of the priods for which wind data were grouped to compute the projected wind vector."
+library(circular)
+library(climaemet)
+wind <- readRDS(here("DataProcessed/wind/wind_clean.rds"))
+
+#Create the lagged dataset
+stripe.lag <- stripe %>% 
+  arrange(plotID_new, plant_num, visit) %>% 
+  group_by(plant_id) %>%
+  mutate(intensity = intensity/100,
+         intensity_prev = lag(intensity),
+         date_prev = lag(date)) %>% 
+  ungroup() %>% 
+  filter(visit != "visit1")
+
+#Set survey periods 
+survey_periods <- stripe.lag %>% 
+  select(visit, date, date_prev) %>% 
+  distinct() %>% 
+  group_by(visit) %>% 
+  summarise(date = max(date),
+            date_prev = min(date_prev),
+            .groups = "drop")
+
+wind_filter <- wind %>% 
+  mutate(period = case_when(datetime >= survey_periods$date_prev[1] & datetime <= survey_periods$date[1] ~ "Visit 1 - Visit 2",
+                            datetime >= survey_periods$date_prev[2] & datetime <= survey_periods$date[2] ~ "Visit 2 - Visit 3",
+                            datetime >= survey_periods$date_prev[3] & datetime <= survey_periods$date[3] ~ "Visit 3 - Visit 4",
+                            datetime >= survey_periods$date_prev[4] & datetime <= survey_periods$date[4] ~ "Visit 4 - Visit 5",
+                            T ~ "no_period")) %>% 
+  filter(period != "no_period")
+
+wind_colors <- wesanderson::wes_palette(name = "Zissou1", n = 4, type = "continuous")
+ggwindrose(speed = wind_filter$speed, 
+             direction = wind_filter$direction,
+           speed_cuts = c(2, 3, 5, max(wind_filter$speed)),
+           n_directions = 16,
+           facet = factor(wind_filter$period),
+           n_col = 4)+
+  labs(fill = "Wind Speed (m/s)",
+       title = "Stratified Wind Summary")+
+  theme(legend.position = "bottom") + 
+  scale_fill_manual(values = wind_colors)
+```
+
+```{r}
+#| label: tbl-periods
+#| tbl-cap: "Dates defining time between survey periods"
+survey_periods %>% 
+  select(visit, date_prev, date) %>% 
+  mutate(Days = date -date_prev,
+         date_prev = format(as.Date(date_prev), "%B %d, %Y"),
+         date = format(as.Date(date), "%B %d, %Y"),
+         visit = c("Visit 1 - Visit 2", "Visit 2 - Visit 3", "Visit 3 - Visit 4", "Visit 4 - Visit 5")) %>% 
+  rename("Visit Period" = visit,
+         "First Day" = date_prev,
+         "Last Day" = date) %>% 
+  gt()
+```
+
+@fig-params shows unconstrained parameter estimates at each transition (e.g. "Visit 2" is the transition from "Visit 1" to "Visit 2").
+
+```{r}
+#| label: fig-params
+#| fig-cap: "Parameter estimates reported for each transition (e.g. 'Visit 2' denotes the transition from 'Visit 1' to 'Visit 2') on the log-odds scale."
+#| fig-width: 10
+#| fig-height: 8
+library(tidyverse)
+library(here)
+library(RColorBrewer)
+
+greek_cols <- RColorBrewer::brewer.pal(5, "Set1")
+
+#Read in results
+
+## Fits results
+fits <- readRDS(here("DataProcessed/results/fits_appended_hurdle.rds"))
+
+plot_theta <- function(fits, title){
+  #Pivot-longer for tables and plotting
+  theta_long <- bind_rows(fits$fits) %>%
+    select(plot_id, visit, theta) %>%
+    unnest_wider(theta) %>%         # Step 2: unpack theta list column
+    pivot_longer(
+      cols = c(beta, delta, gamma, kappa, phi),  # adjust if other parameters present
+      names_to = "parameter",
+      values_to = "estimate"
+    ) %>% 
+    mutate(visit_num = parse_number(visit))
+  
+  theta_long %>% 
+    ggplot(aes(x = visit_num, y = estimate, colour = parameter)) +
+    geom_point(size = 2) +
+    geom_line(linewidth = 1) +
+    facet_wrap(~ plot_id, nrow = 4, ncol = 3, scales = "free_y") +
+    labs(y = "Estimate", 
+         x = "Visit", 
+         title = title) +
+    scale_color_manual(
+      name = "Parameter",
+      values = c("beta" = greek_cols[1], "delta" = greek_cols[2], "gamma" = greek_cols[3], 
+                 "kappa" = greek_cols[4], "phi" = greek_cols[5]),
+      labels = c(
+        beta = expression(beta),
+        delta = expression(delta),
+        gamma = expression(gamma),
+        kappa = expression(kappa),
+        phi = expression(phi)
+      )
+    ) +
+    theme(legend.position = "bottom")
+}
+
+plot_theta(fits$free, expression(bold(theta)~"over visits 2-5 (unconstrained)"))
+```
+
+We also provide a tabular summary of the mode estimates in @tbl-params. One notable improvement over previous modeling attempts is that the current framework converges for all transitions across treatment levels and replicates. However, some estimates still converge to biologically implausible values. For example, we occasionally observe $\hat\kappa < 0$, which likely reflects identifiability issues in later transitions where the dispersal signal is weak. 
+
+```{r}
+#| label: tbl-params
+#| tbl-cap: "Tabular parameter estimes reported for each transition (e.g. 'Visit 2' denotes the transition from 'Visit 1' to 'Visit 2') on the log-odds scale, matching with @fig-params. Red rows indicate $\\hat\\kappa < 0$."
+params_df <- bind_rows(fits$free$fits) %>%
+  select(plot_id, visit, init_kappa, theta) %>%
+  unnest_wider(theta)
+
+params_df %>% 
+  kableExtra::kable(
+    digits = 2,
+    format = "html",  # ensure HTML output
+    col.names = c(
+      "Plot ID", "Visit", "Initial &kappa;", 
+      "&beta;", "&delta;", "&gamma;", "&kappa;", "&phi;"
+    ),
+    escape = FALSE  # important!
+  ) %>%
+  kableExtra::kable_styling(
+    bootstrap_options = c("hover", "condensed", "responsive")
+  ) %>% 
+  kableExtra::row_spec(row = which(params_df$kappa < 0), background = "#ffcccc")
+
+```
+
+From @fig-params and @tbl-params, we make some similar observations to the previous report. It is a common trend among all plots for the parameters $\beta$, $\delta$, and $\phi$ is tend toward 0 as transitions progress. It is also apparent that $\gamma$ and $\kappa$ frequently struggle with issues from identifiability, particularly in later transitions where long-distance dispersal signal is weak.
+
+We also visualize predictions and deviance residuals to get an idea of the predictive utility of the current models. @fig-prediction shows a visualization of true vs. predicted values for the treatments in block B. Predictions and residuals for the remaining replicates are available in the appendix of this report. 
+
+```{r}
+#| label: fig-prediction
+#| fig-cap: "Predicted vs. true disease intensity values at each time transition for block B."
+#| fig-height: 15
+library(sf)
+library(ggpubr)
+#Create a dataframe with all of the predicted results and true values
+df <- map_dfr(names(fits$free$mod_dat), function(plot_id) {
+  plot_obj <- fits$free$mod_dat[[plot_id]]
+  
+  map_dfr(names(plot_obj), function(visit) {
+    visit_obj <- plot_obj[[visit]]
+    
+    n <- length(visit_obj$y_cur)  # assumes y_cur and y_pred are same length
+    
+    tibble(
+      plot_id = rep(plot_id, n),
+      visit = rep(visit, n),
+      y_cur = visit_obj$y_cur,
+      y_pred = visit_obj$y_pred_marginal,
+      plant_id = visit_obj$plant_id
+    )
+  })
+})
+
+#Join with unique plant id's and spatial coordinates
+plot_df <- left_join(df, stripe %>% select(plant_id, north, east) %>% distinct(), by = c("plant_id"))
+
+#Pivot longer for plotting
+df_long <- plot_df %>% 
+  pivot_longer(cols = c(y_cur, y_pred), names_to = "type", values_to = "intensity") %>% 
+  mutate(type = if_else(type == "y_pred", "Predicted", "True")) %>% 
+  st_as_sf(coords = c("east", "north"))
+
+#read in inoculation spatial data
+inoc_sp <- readRDS(here("DataProcessed/experimental/inoc_sp.rds"))
+
+#Load up color palatte
+colors <- wesanderson::wes_palette(name = "Zissou1", n = 5, type = "continuous")
+
+#Function to make plots 
+pred_spplot <- function(exp.dat, inoc.dat, plot_id){
+  # Filter for the block we want
+  stripe.dat <- exp.dat %>% filter(plot_id == {{plot_id}})
+  inoc.dat <- inoc.dat %>% filter(plot_inoc_id == plot_id)
+  
+  #Plot using raw intesity to color
+  ggplot()+
+    geom_sf(data = stripe.dat, 
+            aes(color = intensity), 
+            size = 3)+
+    geom_sf(data = inoc.dat, 
+            aes( fill= "Inoculation Point"), 
+            shape = 23, size = 3, alpha = 0.7)+
+    facet_grid(rows = vars(type), cols = vars(visit))+
+    labs(fill = "",
+         color = "Disease Intensity",
+         title = paste0("Predicted vs. True Intensity (Plot ", plot_id, ")"))+
+    theme_grey()+
+    scale_color_gradient(low = colors[1], high = colors[4])+
+    theme(legend.position = "bottom")
+}
+
+plt_b1 <- pred_spplot(df_long, inoc_sp, plot_id = "B1")
+plt_b2 <- pred_spplot(df_long, inoc_sp, plot_id = "B2")
+plt_b4 <- pred_spplot(df_long, inoc_sp, plot_id = "B4")
+
+ggarrange(plotlist = list(plt_b1, plt_b2, plt_b4), nrow = 3, ncol = 1)
+```
+
+We can also examine the deviance residuals [@ferrari2004a] for the same block (@fig-resid). It is clear that in block B, deviance residuals are generally centered around 0 with no clear trend of over or under-estimation. We are particularly concerned about some extreme underestimates of disease severity at Visit 3, as these may correspond to critical inflection points in disease propagation.
+
+```{r}
+#| label: fig-resid
+#| fig-cap: "Deviance residuals across visits for block B."
+#| fig-height: 7
+#| fig-width: 8
+
+
+df_resid <- map_dfr(names(fits$free$mod_dat), function(plot_id) {
+  plot_obj <- fits$free$mod_dat[[plot_id]]
+  
+  map_dfr(names(plot_obj), function(visit) {
+    visit_obj <- plot_obj[[visit]]
+    
+    n <- length(visit_obj$dev_resid)  # assumes y_cur and y_pred are same length
+    
+    tibble(
+      plot_id = rep(plot_id, n),
+      visit = rep(visit, n),
+      plant_id = visit_obj$plant_id,
+      y_pred = visit_obj$y_pred_marginal,
+      dev_resid = visit_obj$dev_resid
+    )
+  })
+})
+df_resid %>% 
+  mutate(block = substr(plot_id, 1, 1),
+         inoc = substr(plot_id, 2, 2)) %>% 
+  filter(block == "B") %>% 
+  ggplot(aes(x = y_pred, y = dev_resid))+
+  geom_point()+
+  geom_hline(yintercept = 0, linetype  ="dashed")+
+  facet_grid(plot_id~visit) + 
+  labs(y = "Deviance Residual", x = "Predicted Intensity")
+```
+
+# Discussion
+
+This report presents results from a reformulated model that incorporates a hurdle structure to explicitly handle non-diseased plants at early transitions. We see that we have resolved the issue of non-convergence in early transitions; however, the model still struggles from issues of identifiability, particularly in later transitions once disease is widespread throughout the plot. 
+
+In the case of block B, we saw that predictions behaved similarly as before. This behavior was expected since block B had no instances of non-diseased plants across any of the treatment levels, implying the results should be identical to the previous report.
+
+Future work should explore improved scaling or transformation of the dispersal term to mitigate convergence behaviors in $\gamma$ and $\kappa$, especially under difficult identifiability conditions.
+
+# References
+
+::: {#refs}
+:::
+
+# Appendix
+
+## Predictions & Residuals (Remaining Blocks)
+
+### Block A
+
+```{r}
+#| fig-height: 15
+#| fig-width: 10
+## Block A
+plt_a1 <- pred_spplot(df_long, inoc_sp, plot_id = "A1")
+plt_a2 <- pred_spplot(df_long, inoc_sp, plot_id = "A2")
+plt_a4 <- pred_spplot(df_long, inoc_sp, plot_id = "A4")
+
+ggarrange(plotlist = list(plt_a1, plt_a2, plt_a4), nrow = 3, ncol = 1)
+```
+
+```{r}
+#| fig-width: 10
+### Residuals
+df_resid %>% 
+  mutate(block = substr(plot_id, 1, 1),
+         inoc = substr(plot_id, 2, 2)) %>% 
+  filter(block == "A") %>% 
+  ggplot(aes(x = y_pred, y = dev_resid))+
+  geom_point()+
+  geom_hline(yintercept = 0, linetype  ="dashed")+
+  facet_grid(plot_id~visit) + 
+  labs(y = "Deviance Residual", x = "Predicted Intensity")
+```
+
+### Block C
+
+```{r}
+#| fig-height: 15
+#| fig-width: 10
+plt_c1 <- pred_spplot(df_long, inoc_sp, plot_id = "C1")
+plt_c2 <- pred_spplot(df_long, inoc_sp, plot_id = "C2")
+plt_c4 <- pred_spplot(df_long, inoc_sp, plot_id = "C4")
+
+ggarrange(plotlist = list(plt_c1, plt_c2, plt_c4), nrow = 3, ncol = 1)
+```
+
+```{r}
+#| fig-width: 10
+df_resid %>% 
+  mutate(block = substr(plot_id, 1, 1),
+         inoc = substr(plot_id, 2, 2)) %>% 
+  filter(block == "C") %>% 
+  ggplot(aes(x = y_pred, y = dev_resid))+
+  geom_point()+
+  geom_hline(yintercept = 0, linetype  ="dashed")+
+  facet_grid(plot_id~visit) + 
+  labs(y = "Deviance Residual", x = "Predicted Intensity")
+```
+
+### Block D
+
+```{r}
+#| fig-height: 15
+#| fig-width: 10
+plt_d1 <- pred_spplot(df_long, inoc_sp, plot_id = "D1")
+plt_d2 <- pred_spplot(df_long, inoc_sp, plot_id = "D2")
+plt_d4 <- pred_spplot(df_long, inoc_sp, plot_id = "D4")
+
+ggarrange(plotlist = list(plt_d1, plt_d2, plt_d4), nrow = 3, ncol = 1)
+```
+
+```{r}
+#| fig-width: 10
+df_resid %>% 
+  mutate(block = substr(plot_id, 1, 1),
+         inoc = substr(plot_id, 2, 2)) %>% 
+  filter(block == "D") %>% 
+  ggplot(aes(x = y_pred, y = dev_resid))+
+  geom_point()+
+  geom_hline(yintercept = 0, linetype  ="dashed")+
+  facet_grid(plot_id~visit) + 
+  labs(y = "Deviance Residual", x = "Predicted Intensity")
+```
+
+## Gamma restriction sensitivity assessmen
+
+Similarly to the previous report, we explored the possibility of constrained optimization in order to avoid maximization of $\gamma$ and $\kappa$ on the boundary space. The below plot examines estimate behavior under various values of $\gamma_{\text{max}}$ with the constraint that $\kappa > 0$ and $\phi > 0$. 
+
+```{r}
+#| fig-height: 12
+#| fig-width: 10
+#| fig-cap: "Models were fit with constraints on the dispersal parameter of 100, 200, 500, 1000, 2000, and 50000."
+
+# Combine all gamma_max fits into one long tibble
+theta_long_all <- map_dfr(
+  .x = fits$constrained,
+  .f = function(fits) {
+    bind_rows(fits[['fits']]) %>%
+      select(plot_id, visit, theta) %>%
+      unnest_wider(theta)  # beta, delta, gamma, etc.
+  },
+  .id = "gamma_max"  # This will record which gamma_max level this came from
+) %>%
+  pivot_longer(
+    cols = c(beta, delta, gamma, kappa, phi),
+    names_to = "parameter",
+    values_to = "estimate"
+  ) %>%
+  mutate(
+    visit_num = as.numeric(str_extract(visit, "\\d+"))
+  )
+
+theta_long_all %>%
+  dplyr::mutate(gamma_max = parse_number(gamma_max)) %>% 
+  ggplot(aes(x = visit_num, y = estimate, color = parameter)) +
+  geom_point(size = 2) +
+  geom_line(linewidth = 1) +
+  facet_grid(plot_id ~ gamma_max, scales = "free_y") +
+  labs(y = "Estimate", x = "Visit", title = expression(bold(theta) ~ "by gamma_max constraint")) +
+  scale_color_manual(
+    name = "Parameter",
+    values = c("beta" = greek_cols[1], "delta" = greek_cols[2], "gamma" = greek_cols[3],
+               "kappa" = greek_cols[4], "phi" = greek_cols[5]),
+    labels = c(
+      beta = expression(beta),
+      delta = expression(delta),
+      gamma = expression(gamma),
+      kappa = expression(kappa),
+      phi = expression(phi)
+    )
+  ) +
+  theme(legend.position = "bottom")
+```
+
+## Bias Quantification
+```{r}
+#| label: fig-bias
+#| fig-cap: "Parameter bias under contrained optimization ($\\gamma_\\text{max} = 200$), computed as $\\theta_{200} - \\theta_{Inf}$."
+#| fig-height: 8
+#| fig-width: 8
+
+fits <- c(list("gamma_free" = fits$free),
+                 fits$constrained)
+
+theta_constrained <- map2_dfr(.x = fits[names(fits) != "gamma_free"], .y = names(fits[names(fits) != "gamma_free"]), .f = function(fit, name){
+  bind_rows(fit[['fits']]) %>% 
+    mutate(gamma_max = name) %>% 
+    select(gamma_max, plot_id, visit, theta) %>% 
+    unnest_longer(theta)
+})
+
+
+theta_free <- bind_rows(fits$gamma_free$fits) %>% 
+  mutate(gamma_max = "gamma_free") %>% 
+  select(gamma_max, plot_id, visit, theta) %>% 
+    unnest_longer(theta)
+
+
+bias_df <- left_join(theta_constrained, theta_free, by = c("plot_id", "visit", "theta_id"), suffix = c(".constrained", ".free")) %>% 
+  mutate(bias = theta.constrained - theta.free,
+         visit_num = parse_number(visit)) 
+
+bias_plt <- function(constraint, bias_dat){
+  bias_dat %>% 
+    filter(gamma_max.constrained == constraint,
+           theta_id != "gamma") %>% 
+    ggplot(aes(x = visit_num, y = bias, colour = theta_id))+
+    geom_point(size = 2) +
+    geom_line(linewidth = 1) +
+    facet_wrap(~plot_id, scales = "free_y", nrow = 4) +
+    labs(y = "Bias", x = "Visit", title = expression("Bias of" ~ bold(theta) ~ " (" ~ gamma[max] ~"= 200)")) +
+    scale_color_manual(
+      name = "Parameter",
+      values = c("beta" = greek_cols[1], "delta" = greek_cols[2], "gamma" = greek_cols[3],
+                 "kappa" = greek_cols[4], "phi" = greek_cols[5]),
+      labels = c(
+        beta = expression(beta),
+        delta = expression(delta),
+        gamma = expression(gamma),
+        kappa = expression(kappa),
+        phi = expression(phi)
+      )
+    ) +
+    theme(legend.position = "bottom")}
+
+bias_plt("gamma_200", bias_df)
+  
+```

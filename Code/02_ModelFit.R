@@ -87,7 +87,7 @@ for (i in 1:nrow(survey_periods)){
                            dir.mat = dist_dir$dir,
                            wind = wind)
   #Define values of kappa to try
-  kappa_try <- seq(1,5,0.5)
+  kappa_try <- seq(0.25,2.5,0.25)
   
   #Initialize theta
   theta_init <- initialize_theta(y_cur = y_cur, y_prev = y_prev, wind_mat, dist_dir$dist, 
@@ -158,7 +158,7 @@ for (plot_id in names(mod_dat)) {
 
 # Fit the model (constrained) ------------------------------------------------------
 # Define gamma upper bounds to try
-gamma_max_vals <- c(100, 200, 500, 1000)
+gamma_max_vals <- c(100, 200, 500, 1000, 2000, 5000)
 
 # Store results for each gamma max
 constrained_fits <- list()
@@ -169,7 +169,7 @@ for (gamma_max in gamma_max_vals) {
   message("Fitting models with gamma_max = ", gamma_max)
   
   # Define lower and upper bounds (phi capped at 200)
-  lower_bounds <- c(-Inf, -Inf, -Inf, -Inf, 0.01)
+  lower_bounds <- c(-Inf, -Inf, -Inf, 0.01, 0.01)
   upper_bounds <- c(Inf, Inf, gamma_max, Inf, Inf)
   
   fits <- list()
