@@ -145,40 +145,47 @@ We weighted the contribution of each source by its severity at the previous time
 $$
 Z \sim \text{Multinomial}\bigpar{1, \bigpar{p^{(1)}, \ldots, p^{(k)}}}
 $$
-Under this framework $P(Z = 1) = p^{(1)}$ indicates that an infection event is caused by source 1 with probability $p^{(1)}$." They then assume that a disease occurrence is described by each of the $K$ velocity models derived in the paper. Finally, although their approach assumes infection from a single source, they are able to estimate $p^{(1)}, \ldots, p^{(k)}$ using an EM algorithm to obtain an probabilistic interpretation of infection from each of the $k \in K$ potential sources. Here, we propose a similary approach--motivated by the forward-model in @eq-meanmod.
+Under this framework $P(Z = 1) = p^{(1)}$ indicates that an infection event is caused by source 1 with probability $p^{(1)}$." They then assume that a disease occurrence is described by each of the $K$ velocity models derived in the paper. Finally, although their approach assumes infection from a single source, they are able to estimate $p^{(1)}, \ldots, p^{(k)}$ using an EM algorithm to obtain an probabilistic interpretation of infection from each of the $k \in K$ potential sources. Here, we propose a similar approach--motivated by the forward-model in @eq-meanmod.
 
 ## Backward Model
 
-As in @ojwang2021, we would like to modify our likelihood to consider the latent process $Z$, which indicates causal attribution of disease to one of $k \in \bigpar{1, 2, \ldots, K}$ potential sources. First, let us denote $\boldsymbol Z_i$ as the latent variable denoting which source infected plant $i$, where $p_{ik} = P(Z_i = k)$. We then denote the data from our forward-model as $\mathcal{Y} = \{Y_{i,t}, Y_{i,t-1}, w_{ij}, d_{ij}\}$ and the complete data as $\mathcal{X} = \{\boldsymbol Z_i, \mathcal{Y}\}$. We can then express the likelihood of our parameter vector $\boldsymbol\theta$ given the complete data $\mathcal{X}$ at a single transiton as
-
+As in @ojwang2021, we consider a latent variable $Z_i$ indicating the source of infection for plant $i$, where 
 $$
-\mathcal{L(\boldsymbol\theta | \mathcal{X})} = \sum_{k = 1}^K \prod_{i = 1}^n\bigbrak{f(y_{i,t}|\mu_{i,t}^{(k)}, \phi_t)}^{\indicate{Z_i = k}}
-$${#eq-emlik}
-
-The log-likelihood is then taken to be 
-
+Z_i \sim \text{Multinomial}(1, \boldsymbol{p}_i), \quad \text{with} \quad \boldsymbol{p}_i = \bigpar{p_{i1}, \ldots, p_{iK}}, \quad p_{ik} = P(Z_i = k), \quad \sum_{k=1}^Kp_{ik} = 1
 $$
-\ell(\boldsymbol\theta | \mathcal{X}) = \sum_{k=1}^K\indicate{Z_{ik} = 1}\nsum\log f(y_{i,t}|\mu_{i,t}^{(k)}, \phi_t)
-$${#eq-emloglik}
 
-and its expectation
+We define the complete data as $\mathcal{X} = \bigbrace{\mathcal{Y}, \boldsymbol{Z}}$, where $\mathcal{Y}$ consists of $\bigbrace{y_{i,t}, y_{j,t-1}, w_{ij}, d_{ij}}$ for all $j \neq i$.
 
+The complete-data log-likelihood is then:
 $$
-\E[_\theta]{\ell(\boldsymbol\theta | \mathcal{X})} = \nsum\sum_{k = 1}^K p_i^{(k)} \cdot f(y_{i,t}|\mu_{i,t}^{(k)}, \phi_t)
-$${#eq-emexpec}
+\ell(\boldsymbol{\theta} \mid \mathcal{X}) = \nsum \sum_{k=1}^K \indicate{Z_i = k} \cdot \log f(y_{i,t} \mid \mu_{i,t}^{(k)}, \phi_t)
+$${#eq-loglik}
 
-This sets up a traditional application of the EM algorithm in which we could iterate between maximizing the log-likelihood with respect to the parameter vector $\boldsymbol\theta$, and taking its expectation. Recall, however, that we have already maximized $\boldsymbol\theta$ with the forward model. So all that remains is to estimate $p_i^{(k)} = \E{Z_{ik} = 1 \mid \mathcal{Y}}$, which we can derive using Bayes' rule as
+where $\mu_{i,t}^{(k)}$ denotes the predicted mean intensity at $i$ assuming infection from source group $k$. We can then apply the Expectation-Maximization (EM) algorithm to estimate the posterior source probabilities $\hat p_i^{(k)} := P(Z_i = k \mid \mathcal{Y})$. At each iteration:
 
+- \textbf{E-step:} Use Bayes' rule to update
 $$
-\hat p_i^{(k)} = P(Z_i = k \mid \mathcal{Y}) = \frac{f(y_{i,t}|\mu_{i,t}^{(k)}, \phi_t) \cdot \pi(p_i^{(k)})}{\sum_{l=1}^K f(y_{i,t}|\mu_{i,t}^{(l)}, \phi_t) \cdot \pi(p_i^{(l)})}
-$$ {#eq-updatep}
+\hat p_i^{(k)} = \frac{f(y_{i,t} \mid \mu_{i,t}^{(k)}, \phi_t) \cdot \pi_k}{\sum_{h=1}^K f(y_{i,t} \mid \mu_{i,t}^{(h)}, \phi_t) \cdot \pi_h}
+$${#eq-estep}
 
-Where $\pi(\cdot)$ is the specified prior -- most likely attributing uniform probability to all potential sources. Note, however, that our forward model did not consider a seperate mean component for each source $k$, as is specified here. Let us define
+Where $\pi_k$ is the prior probability that source group $C_k$ is responsible for infection at unit $i$. A uniform prior over all $K$ source groups is a natural choice: $\pi_k = 1/K$ for all $k$.
 
+- \textbf{M-step (optional):} Maximize the expected complete-data log-likelihood
 $$
-\mu_{i,t}^{(k)} = \logit^{-1}\bigpar{\eta_{i,t}^{(k)}} = \beta+ \delta y_{i,t-1}(1-y_{i,t-1}) + \gamma\sum_{j \in C_k}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}} 
+Q(\boldsymbol\theta) = \nsum \sum_{k=1}^K \hat p_i^{(k)} \cdot \log f(y_{i,t} \mid \mu_{i,t}^{(k)}, \phi_t)
+$${#eq-mstep}
+
+In our case, we have already optimized $\boldsymbol\theta$ from the forward model and treat it as fixed. Thus, only the E-step is required to infer posterior source probabilities $\hat p_i^{(k)}$ for each $k \in \bigbrace{1, \ldots, K}$.
+
+Note that our forward model did not estimate a separate mean response $\mu_{i,t}^{(k)}$ for each source group $k$.To evaluate the posterior probabilities in the E-step, we must therefore reconstruct hypothetical mean responses under the assumption that only group $C_k$ contributed to infection. Using parameter estimates from the forward model, we define:
 $$
-That is, we only sum the dispersal component for source $j \neq i$ within potential source $C_k$.
+\hat\mu_{i,t}^{(k)} = \logit^{-1}\bigpar{\hat\eta_{i,t}^{(k)}} = \hat\beta + \hat\delta y_{i,t-1}(1 - y_{i,t-1}) + \hat\gamma \sum_{j \in C_k} \bigpar{y_{j,t-1} w_{ij} (d_{ij} + d_0)^{-\hat\kappa}}
+$$
+That is, we recompute the dispersal component of the linear predictor $\hat\eta_{i,t}^{(k)}$ using only the subset of sources $j \in C_k$, while holding all estimated parameters fixed at their forward-model values.
+
+To complete the backward modeling framework, we must choose a source grouping scheme. One straightforward approach is to partition the $n$ survey units into $K$ evenly-sized clusters, each defining a source group $C_k$. The number of source groups $K$ can then be selected based on model performance metrics such as prediction error or information criteria.
+
+
 \newpage
 
 # References
