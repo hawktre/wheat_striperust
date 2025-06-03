@@ -87,6 +87,7 @@ fit.summarise <- function(fits, mod_dat){
                           kappa = params[['kappa']],
                           derivative = F)
     
+    mod_dat[[fit$plot_id]][[fit$visit]][['X1']] <- X1
     mod_dat[[fit$plot_id]][[fit$visit]][['X2']] <- X2
     
     # Compute predictions

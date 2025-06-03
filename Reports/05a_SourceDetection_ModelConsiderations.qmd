@@ -1,0 +1,186 @@
+---
+title: "Spread of Wheat Stripe Rust in an Experimental Framework"
+subtitle: "Deriving a model for source detection"
+author:   
+  - name: Trent VanHawkins
+    affiliations:
+      - ref: osu
+    degrees: MS
+    corresponding: true
+  - name: Christopher Mundt
+    affiliations:
+      - ref: osu
+    degrees: PhD
+  - name: David Gent
+    affiliations:
+      - ref: usda
+      - ref: osu
+    degrees: PhD
+  - name: Shirshendu Chatterjee
+    affiliations:
+      - ref: nyu
+  - name: Sharmodeep Bhattacharyya
+    affiliations:
+      - ref: osu
+    degrees: PhD
+affiliations:
+  - id: osu
+    name: Oregon State University
+  - id: usda
+    name: U.S. Department of Agriculture
+  - id: nyu
+    name: City University of New York
+format: 
+  pdf:
+    geometry: "margin=0.75in"
+    mathspec: true
+    cap-location: bottom
+    tbl-cap-location: bottom
+    header-includes: 
+      - \usepackage{fancyhdr, amsthm, amssymb,amsfonts,amsthm, mystyle, amsmath, bbm}
+      - \usepackage{float, tabularx}
+      - \floatplacement{table}{H}
+      - \pagestyle{fancy}
+      - \fancyhead[R]{Model Considerations}
+      - \fancyhead[L]{Trent VanHawkins}
+      - \fancyfoot[C]{\thepage} # Center page number at bottom of each page
+page-layout: full
+execute: 
+  eval: true
+references: references.bib
+bibliography: references.bib
+---
+
+# Introduction
+
+Previous reports in this series have derived and documented a model for the aerial dispersal of  Stripe Rust (*Puccinia striiformis*) among Wheat plants. In these reports, we explored various model formulations and optimization strategies of a forward-model of disease intensity, which we breifly review here in addition to experimental design.
+
+Now that we have optimized the parameter vector $\boldsymbol\theta_{t,s,b}$ for each transition $t$ in each treatment-replicate combination (indexed by $s$ and $b$, respectively), our goal is to derive and implement a backward model which will allow us to infer the likely contributions of each plant or group of plants to observed disease severity. That is, if we let disease intensity of plant $i$ and time $t$ be denoted by $y_{i,t}$, we would like to derive a model for $y_{i,t-1} | y_{i,t}$. Here, we propose a latent-variable approach for the structure and optimization of such a model via the Expectation-Maximization (EM) algorithm. 
+
+# Methods
+
+We have detailed experimental design rigerously in previous reports (see "00_EDA.qmd"), but let us recall that we index disease severity $Y$  at an individual sample location $i$ at time $t \in \bigpar{1, \ldots, 5}$ by $Y_{i,t}$. Additionally, we can denote the experimental block $b \in (1, 2, 3, 4)$, with replicates distinguished by the number of inoculation sources (treatment-levels) $s \in \bigpar{1, 2, 4}$. Recall that disease severity at sample location $i$ was measured via visual estimation as the proportion of infected plant tissue within a $(0.76m \times 0.76m)$ square, and was expressed as a percentage. Using this measurement scheme, the outcome naturally presents as a continuous measure with bounds at $(0,1)$, which is naturally captured by a $\text{Beta}(a, b)$ distribution where $a$ and $b$ are shape parameters. That is,
+
+$$
+Y_{i,t,s,b} \overset{\text{indep.}}{\sim} \text{Beta}(a_{i,t,s,b},b_{i,t,s,b}).
+$$
+
+In this report, as in previous reports, we will drop subscripts for block and replicate ($b$ and $s$) for economy of expression. We reparameterize the model such that its expectation is its mean $\mu_{i,t}$. The density function for a single observation of $y_{i,t}$ is then given by 
+
+$$
+f(y_{i,t} \mid \mu_{i,t}, \phi_t) = \frac{\Gamma(\phi_t)}{\Gamma(\mu_{i,t} \phi_t)\Gamma((1 - \mu_{i,t})\phi_t)} \cdot y^{\mu_{i,t}\phi_t - 1}(1 - y)^{(1 - \mu_{i,t})\phi_t - 1} \quad 0 < y_{i,t} < 1
+$$
+
+Under this parameterization, we have that
+
+$$
+\E{y_{i,t}} = \mu_{i,t} \quad 0 < \mu_{i,t} < 1; \quad  \text{and} \quad \Var{y_{i,t}} = \frac{\mu_{i,t}(1-\mu_{i,t})}{1 + \phi_t} \quad \phi_t > 0
+$$
+
+That is, for $Y_{i,t} \mid \boldsymbol{X}_{i,t} \overset{\text{indep.}}{\sim} \text{Beta}(\mu_{i,t}, \phi_t)$, we estimate a unique mean response $\mu_{i,t}$ for each sample location and time point, while assuming a shared precision parameter $\phi_t$ across locations within a given time. This is a common modeling assumption in generalized regression frameworks to reduce complexity and avoid overparameterization [@ferrari2004].
+
+## The Forward Model
+In the forward model, we estimated the parameter $\mu_{i,t}$ under a non-linear GLM framework:
+
+$$
+\E{y_{i,t}| y_{i,t-1}, \boldsymbol\theta_t} = \mu_{i,t} = \logit^{-1}(\eta_{i,t})
+$$
+and we specified the mean-structure of the model as
+
+$$
+\eta_{i,t} = \beta+ \delta y_{i,t-1}(1-y_{i,t-1}) + \gamma\sum_{j \neq i}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}}
+$${#eq-meanmod}
+
+We then optimized the parameter vector $\boldsymbol\theta_{t,s,b}$ separately for each transition from time $t - 1$ to time $t$ and for each treatment-replicate combination. Optimization was performed using the quasi-Newton method with gradient-based Hessian approximation, as implemented in the `optim()` function (`method = "BFGS"`) in `R`. Additional details on covariate formatting and parameter initialization can be found in '00a_ModelingConsiderations.qmd`. 
+
+::: {#tbl-covars}
+\begin{table}
+    \small
+    \centering
+    \subcaptionbox{Variable definitions for the proposed model.\label{tbl-vars}}{
+        \begin{tabularx}{\textwidth}{lX}
+            \toprule
+            Variable & Description \\
+            \midrule
+            $y_{i,t-1}$ & Proportion of diseased plant tissue at survey unit $i$ in the previous time point. \\
+            $y_{j,t-1}$ & Proportion of diseased plant tissue at survey unit $j$ in the previous time point. \\
+            $w_{ij}$    & Wind vector on $i - j$ direction at the prior time point. \\
+            $d_{ij}$    & Distance between survey unit $i$ and $j$. \\
+            $d_0$       & A constant (optional) distance offset to avoid division errors at 0. \\
+            \bottomrule
+        \end{tabularx}
+    }
+    
+    \vspace{1em}  
+
+    \subcaptionbox{Model parameters and interpretations from the proposed model.\label{tbl-params}}{
+        \begin{tabularx}{\textwidth}{lX}
+            \toprule
+            Parameter & Interpretation \\
+            \midrule
+            $\beta$  & Baseline log-odds of disease, after accounting for autoinfection and disease spread. \\
+            $\delta$ & Change in log-odds of disease associated with autoinfection for each survey unit. \\
+            $\gamma$ & Distance-adjusted change in log-odds of disease associated with disease spread from other survey units, after accounting for autoinfection. \\
+            $\kappa$ & Dispersal parameter providing distance adjustment to change in log-odds of disease associated with individual sources; scales latter non-linearly with distance away from target. \\
+            \bottomrule
+        \end{tabularx}
+    }
+\end{table}
+
+\small Covariates, parameters, and their interpretations for the proposed model from @eq-meanmod.
+:::
+
+## Introducing a Latent Structure
+
+The ultimate goal of this project is to derive and implement a modeling framework for *source detection*. As a result of working with continuous intensity data, we were conveniently able to consider every plant where $j \neq i$ as a potential source of infection in the forward model. We explicitly accounted for the amount of inoculate moved from plant $j$ to plant $i$ via an orthogonal wind vector $w_{ij}$ as a non-linear function of the distance between plants through the dispersal component of the model (@eq-dispersal). 
+
+$$
+\gamma\sum_{j \neq i}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}}
+$${#eq-dispersal}
+
+We weighted the contribution of each source by its severity at the previous time point $y_{j, t-1}$, and summed over the contribution from all other sources such that the dispersal term $\gamma$ can then be interpreted as in @tbl-covars. This approach has a major advantage in that we do not need to optimize the weight associated with each source $j \neq i$, which would certainly lead to issues of identifiability otherwise. The model falls short, however, when it comes to the issue of *source detection*, when we are concerned with the likelihood that plant $i$ was infected by plant $j \neq i$. 
+
+@ojwang2021 propose a method in the context of their wavefront model in which they introduce a latent process $Z$ which "indicates the causal attribution of disease to one of the $K$ sources with a certain probability:
+
+$$
+Z \sim \text{Multinomial}\bigpar{1, \bigpar{p^{(1)}, \ldots, p^{(k)}}}
+$$
+Under this framework $P(Z = 1) = p^{(1)}$ indicates that an infection event is caused by source 1 with probability $p^{(1)}$." They then assume that a disease occurrence is described by each of the $K$ velocity models derived in the paper. Finally, although their approach assumes infection from a single source, they are able to estimate $p^{(1)}, \ldots, p^{(k)}$ using an EM algorithm to obtain an probabilistic interpretation of infection from each of the $k \in K$ potential sources. Here, we propose a similary approach--motivated by the forward-model in @eq-meanmod.
+
+## Backward Model
+
+As in @ojwang2021, we would like to modify our likelihood to consider the latent process $Z$, which indicates causal attribution of disease to one of $k \in \bigpar{1, 2, \ldots, K}$ potential sources. First, let us denote $\boldsymbol Z_i$ as the latent variable denoting which source infected plant $i$, where $p_{ik} = P(Z_i = k)$. We then denote the data from our forward-model as $\mathcal{Y} = \{Y_{i,t}, Y_{i,t-1}, w_{ij}, d_{ij}\}$ and the complete data as $\mathcal{X} = \{\boldsymbol Z_i, \mathcal{Y}\}$. We can then express the likelihood of our parameter vector $\boldsymbol\theta$ given the complete data $\mathcal{X}$ at a single transiton as
+
+$$
+\mathcal{L(\boldsymbol\theta | \mathcal{X})} = \sum_{k = 1}^K \prod_{i = 1}^n\bigbrak{f(y_{i,t}|\mu_{i,t}^{(k)}, \phi_t)}^{\indicate{Z_i = k}}
+$${#eq-emlik}
+
+The log-likelihood is then taken to be 
+
+$$
+\ell(\boldsymbol\theta | \mathcal{X}) = \sum_{k=1}^K\indicate{Z_{ik} = 1}\nsum\log f(y_{i,t}|\mu_{i,t}^{(k)}, \phi_t)
+$${#eq-emloglik}
+
+and its expectation
+
+$$
+\E[_\theta]{\ell(\boldsymbol\theta | \mathcal{X})} = \nsum\sum_{k = 1}^K p_i^{(k)} \cdot f(y_{i,t}|\mu_{i,t}^{(k)}, \phi_t)
+$${#eq-emexpec}
+
+This sets up a traditional application of the EM algorithm in which we could iterate between maximizing the log-likelihood with respect to the parameter vector $\boldsymbol\theta$, and taking its expectation. Recall, however, that we have already maximized $\boldsymbol\theta$ with the forward model. So all that remains is to estimate $p_i^{(k)} = \E{Z_{ik} = 1 \mid \mathcal{Y}}$, which we can derive using Bayes' rule as
+
+$$
+\hat p_i^{(k)} = P(Z_i = k \mid \mathcal{Y}) = \frac{f(y_{i,t}|\mu_{i,t}^{(k)}, \phi_t) \cdot \pi(p_i^{(k)})}{\sum_{l=1}^K f(y_{i,t}|\mu_{i,t}^{(l)}, \phi_t) \cdot \pi(p_i^{(l)})}
+$$ {#eq-updatep}
+
+Where $\pi(\cdot)$ is the specified prior -- most likely attributing uniform probability to all potential sources. Note, however, that our forward model did not consider a seperate mean component for each source $k$, as is specified here. Let us define
+
+$$
+\mu_{i,t}^{(k)} = \logit^{-1}\bigpar{\eta_{i,t}^{(k)}} = \beta+ \delta y_{i,t-1}(1-y_{i,t-1}) + \gamma\sum_{j \in C_k}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}} 
+$$
+That is, we only sum the dispersal component for source $j \neq i$ within potential source $C_k$.
+\newpage
+
+# References
+::: {#refs}
+:::

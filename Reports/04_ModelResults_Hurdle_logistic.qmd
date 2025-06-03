@@ -349,8 +349,12 @@ df <- map_dfr(names(fits$free$mod_dat), function(plot_id) {
       plot_id = rep(plot_id, n),
       visit = rep(visit, n),
       y_cur = visit_obj$y_cur,
+      y_prev = visit_obj$y_prev,
       y_pred = visit_obj$y_pred_marginal,
-      plant_id = visit_obj$plant_id
+      plant_id = visit_obj$plant_id,
+      X1 = visit_obj$X1,
+      X2 = visit_obj$X2,
+      resid = visit_obj$dev_resid
     )
   })
 })
@@ -361,7 +365,8 @@ plot_df <- left_join(df, stripe %>% select(plant_id, north, east) %>% distinct()
 #Pivot longer for plotting
 df_long <- plot_df %>% 
   pivot_longer(cols = c(y_cur, y_pred), names_to = "type", values_to = "intensity") %>% 
-  mutate(type = if_else(type == "y_pred", "Predicted", "True")) %>% 
+  mutate(type = if_else(type == "y_pred", "Predicted", "True"),
+         plant_num = parse_number(sapply(str_split(plant_id, "_", n = 2), `[`, 2))) %>% 
   st_as_sf(coords = c("east", "north"))
 
 #read in inoculation spatial data
@@ -426,23 +431,66 @@ df_resid <- map_dfr(names(fits$free$mod_dat), function(plot_id) {
     )
   })
 })
-df_resid %>% 
+df_resid_plt <-df_resid %>% 
   mutate(block = substr(plot_id, 1, 1),
-         inoc = substr(plot_id, 2, 2)) %>% 
-  filter(block == "B") %>% 
-  ggplot(aes(x = y_pred, y = dev_resid))+
-  geom_point()+
-  geom_hline(yintercept = 0, linetype  ="dashed")+
-  facet_grid(plot_id~visit) + 
+         inoc = substr(plot_id, 2, 2),
+         plant_num = parse_number(sapply(str_split(df_resid$plant_id, "_", n = 2), `[`, 2)))
+  
+df_resid_plt %>% 
+filter(block == "B") %>% 
+  ggplot(aes(x = y_pred, y = dev_resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_label(data = function(d) filter(d, abs(dev_resid) > 3),
+            aes(label = plant_num), 
+            vjust = 1.5, 
+            size = 3) +
+  facet_grid(plot_id ~ visit) + 
   labs(y = "Deviance Residual", x = "Predicted Intensity")
 ```
 
-From @fig-resid, we see no particular pattern in the residuals at visits 2–4. Notice, however, that we are now systematically *underestimating* disease intensity in Block B at Visit 5, once the plot has become relatively saturated with disease, across all treatment levels. This suggests a trade-off introduced by using a non-linear autoinfection term: while it captures early epidemic dynamics more realistically, it may limit the model’s ability to represent late-stage disease severity.
+From @fig-resid, we see no particular pattern in the residuals. It is note-worthy, however, that we still see some drastic underprediction of disease intensity in the early visits. Particularly at visit 3.
 
+```{r}
+#| label: fig-highresid
+#| fig-width: 6
+#| fig-height: 6
+#| fig-cap: "Spatial data representation, color-coded by residual value. Red indicates a high residual. Plants with a an absolute residual > 3 are labeled."
+
+library(ggrepel)
+# Filter for the block we want
+stripe.dat.B <- df_long %>% filter(plot_id %in% c("B1", "B2", "B4"))
+inoc.dat.B <- inoc_sp %>% filter(plot_inoc_id %in% c("B1", "B2", "B4")) %>% rename("plot_id" = plot_inoc_id)
+  
+  #Plot using raw intesity to color
+  ggplot(data = stripe.dat.B %>% filter(visit %in% c("visit2", "visit3")))+
+    geom_sf(aes(color = resid), 
+            size = 3)+
+    geom_sf_label(data = stripe.dat.B %>% 
+                   filter(visit %in% c("visit2", "visit3"),
+                          abs(resid) > 3),
+                 aes(label = plant_num),
+                 size = 2, 
+                 nudge_x = 1.5,
+                 nudge_y = -1)+
+    geom_sf(data = inoc.dat.B, 
+            aes( fill= "Inoculation Point"), 
+            shape = 23, size = 3, alpha = 0.7)+
+    facet_grid(rows = vars(plot_id), cols = vars(visit))+
+    labs(fill = "",
+         color = "Deviance Residual",
+         title = paste0("Deviance Residuals in Space (Block B)"))+
+    theme_grey()+
+    scale_color_gradient(low = colors[1], high = colors[5])+
+    theme(legend.position = "right")
+```
+@fig-highresid visualizes residual values in space and shows us that those plants who are severely underpredicted are often those that are closest to the sources. 
 
 # Discussion
 
-This report presents results from a reformulated model that incorporates a hurdle structure to explicitly handle non-diseased plants during early time points and accounts for non-linear growth in autoinfection. The clearest outcome of this strategy is a trade-off between biological interpretability and predictive performance. With both the hurdle model and logistic autoinfection term, we obtain the most biologically plausible parameter estimates to date. However, once plots become saturated with disease (e.g., Visit 5), the model systematically underestimates disease severity. This may reflect a decline of estimated dispersal effects in the late stages of the epidemic, or a mismatch between the logistic assumption and late-stage epidemic dynamics.
+This report presents results from a reformulated model that incorporates a hurdle structure to explicitly handle non-diseased plants at early time points and accounts for non-linear growth in autoinfection. Of the model structures explored to date, this version yields the most interpretable and biologically realistic parameter estimates. In particular, the inclusion of a logistic aggregation term in the autoinfection component more accurately reflects the dynamics of disease progression observed in this experiment.
+
+We also note that the largest deviance residuals tend to occur in plants located nearest to the inoculation sources (@fig-highresid). These plants often exhibit high disease intensity and behave as population outliers, posing challenges for accurate prediction. However, such outliers are biologically meaningful, representing critical inflection points in the spatial spread of disease. Future modeling efforts could explicitly account for the influential nature of source-adjacent plants—either through spatial covariates or alternative residual weighting schemes.
 
 # References
 

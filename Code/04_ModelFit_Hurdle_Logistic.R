@@ -88,7 +88,7 @@ for (plot_id in names(mod_dat)) {
       fit <- try(
         optim(
           par = init_theta,
-          fn = neg_loglik,
+          fn = neg_loglik_logistic,
           gr = neg_grad_logistic,
           method = "BFGS",
           control = list(maxit = 5000, reltol = 1e-8),
@@ -159,7 +159,7 @@ for (gamma_max in gamma_max_vals) {
         fit <- tryCatch({
           optim(
             par = init_theta,
-            fn = neg_loglik,
+            fn = neg_loglik_logistic,
             gr = neg_grad_logistic,
             method = "L-BFGS-B",
             lower = lower_bounds,

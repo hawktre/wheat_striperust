@@ -140,6 +140,22 @@ neg_loglik <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.
   -loglik_beta(y_current, mu, phi)
 }
 
+neg_loglik_logistic <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01) {
+  beta  <- par["beta"]
+  delta <- par["delta"]
+  gamma <- par["gamma"]
+  kappa <- par["kappa"]
+  phi   <- par["phi"]
+  
+  dispersal <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa)
+  eta <- beta + delta * (y_prev*(1-y_prev)) + gamma * dispersal
+  mu  <- inv_logit(eta)
+  mu <- pmin(pmax(mu, 1e-6), 1 - 1e-6)
+  phi <- pmax(phi, 1e-6)
+  
+  -loglik_beta(y_current, mu, phi)
+}
+
 # --- function for gradients ---
 neg_grad <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01) {
   beta  <- par["beta"]
