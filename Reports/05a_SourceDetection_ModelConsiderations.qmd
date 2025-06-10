@@ -140,52 +140,118 @@ $${#eq-dispersal}
 
 We weighted the contribution of each source by its severity at the previous time point $y_{j, t-1}$, and summed over the contribution from all other sources such that the dispersal term $\gamma$ can then be interpreted as in @tbl-covars. This approach has a major advantage in that we do not need to optimize the weight associated with each source $j \neq i$, which would certainly lead to issues of identifiability otherwise. The model falls short, however, when it comes to the issue of *source detection*, when we are concerned with the likelihood that plant $i$ was infected by plant $j \neq i$. 
 
-@ojwang2021 propose a method in the context of their wavefront model in which they introduce a latent process $Z$ which "indicates the causal attribution of disease to one of the $K$ sources with a certain probability:
+@ojwang2021 propose a method in the context of their wavefront model in which they introduce a latent process $Z$ which indicates the causal attribution of disease to one of the $s \in \bigpar{1, \ldots, S}$ sources with a certain probability:
 
 $$
-Z \sim \text{Multinomial}\bigpar{1, \bigpar{p^{(1)}, \ldots, p^{(k)}}}
+Z \sim \text{Multinomial}\bigpar{1, \bigpar{p^{(1)}, \ldots, p^{(s)}}}
 $$
-Under this framework $P(Z = 1) = p^{(1)}$ indicates that an infection event is caused by source 1 with probability $p^{(1)}$." They then assume that a disease occurrence is described by each of the $K$ velocity models derived in the paper. Finally, although their approach assumes infection from a single source, they are able to estimate $p^{(1)}, \ldots, p^{(k)}$ using an EM algorithm to obtain an probabilistic interpretation of infection from each of the $k \in K$ potential sources. Here, we propose a similar approach--motivated by the forward-model in @eq-meanmod.
+Under this framework $P(Z = 1) = p^{(1)}$ indicates that an infection event is caused by source 1 with probability $p^{(1)}$." They then assume that a disease occurrence is described by each of the $S$ velocity models derived in the paper. Finally, although their approach assumes infection from a single source, they are able to estimate $p^{(1)}, \ldots, p^{(s)}$ using an EM algorithm to obtain an probabilistic interpretation of infection from each of the $S$ potential sources. Here, we propose a similar approach--motivated by the forward-model in @eq-meanmod.
 
 ## Backward Model
 
-As in @ojwang2021, we consider a latent variable $Z_i$ indicating the source of infection for plant $i$, where 
+As in @ojwang2021, let us consider a latent variable $Z_i$ indicating the source of infection for plant $i$:
+
 $$
-Z_i \sim \text{Multinomial}(1, \boldsymbol{p}_i), \quad \text{with} \quad \boldsymbol{p}_i = \bigpar{p_{i1}, \ldots, p_{iK}}, \quad p_{ik} = P(Z_i = k), \quad \sum_{k=1}^Kp_{ik} = 1
+Z_i \sim \text{Multinomial}(1, \boldsymbol{p}_i)
 $$
 
-We define the complete data as $\mathcal{X} = \bigbrace{\mathcal{Y}, \boldsymbol{Z}}$, where $\mathcal{Y}$ consists of $\bigbrace{y_{i,t}, y_{j,t-1}, w_{ij}, d_{ij}}$ for all $j \neq i$.
+Where 
 
-The complete-data log-likelihood is then:
+  - $\boldsymbol{p}_i = \bigpar{p_{i1}, \ldots, p_{iS}}$
+  - $p_{is} = P(Z_i = s)$
+  - $\sum_{s=1}^Sp_{is} = 1$
+
+Define the complete data as $\mathcal{X} = \bigbrace{\mathcal{Y}, \boldsymbol{Z}}$, where $\mathcal{Y} = \bigbrace{y_{i,t}, y_{j,t-1}, w_{ij}, d_{ij}}$ for all $j \neq i$. The complete-data log-likelihood is then given by:
 $$
-\ell(\boldsymbol{\theta} \mid \mathcal{X}) = \nsum \sum_{k=1}^K \indicate{Z_i = k} \cdot \log f(y_{i,t} \mid \mu_{i,t}^{(k)}, \phi_t)
+\ell(\boldsymbol{\theta} \mid \mathcal{X}) = \nsum \sum_{s=1}^S \indicate{Z_i = s} \cdot \log f(y_{i,t} \mid \mu_{i,t}^{(s)}, \phi_t)
 $${#eq-loglik}
 
-where $\mu_{i,t}^{(k)}$ denotes the predicted mean intensity at $i$ assuming infection from source group $k$. We can then apply the Expectation-Maximization (EM) algorithm to estimate the posterior source probabilities $\hat p_i^{(k)} := P(Z_i = k \mid \mathcal{Y})$. At each iteration:
+where $\mu_{i,t}^{(s)}$ denotes the predicted mean intensity at $i$ assuming infection from source group $s$. We can then apply the Expectation-Maximization (EM) algorithm to estimate the posterior source probabilities $\hat p^{(s)}$. At each iteration:
 
-- \textbf{E-step:} Use Bayes' rule to update
+\textbf{E-step:} Use Bayes' rule to update
 $$
-\hat p_i^{(k)} = \frac{f(y_{i,t} \mid \mu_{i,t}^{(k)}, \phi_t) \cdot \pi_k}{\sum_{h=1}^K f(y_{i,t} \mid \mu_{i,t}^{(h)}, \phi_t) \cdot \pi_h}
+\hat p_i^{(s)} =  P(Z_i = s \mid \mathcal{Y}) \propto f(y_{i,t} \mid \mu_{i,t}^{(s)}, \phi_t) \cdot \pi_s
 $${#eq-estep}
 
-Where $\pi_k$ is the prior probability that source group $C_k$ is responsible for infection at unit $i$. A uniform prior over all $K$ source groups is a natural choice: $\pi_k = 1/K$ for all $k$.
+Where $\pi_s$ is the prior probability that source group $C_s$ is responsible for infection at unit $i$. A uniform prior over all $S$ source groups is a natural choice: $\pi_s = 1/S$ for all $s$.
 
-- \textbf{M-step (optional):} Maximize the expected complete-data log-likelihood
+\textbf{M-step:} Maximize the expected complete-data log-likelihood
 $$
-Q(\boldsymbol\theta) = \nsum \sum_{k=1}^K \hat p_i^{(k)} \cdot \log f(y_{i,t} \mid \mu_{i,t}^{(k)}, \phi_t)
+Q(\boldsymbol\theta) = \nsum \sum_{s=1}^S \hat p_i^{(s)} \cdot \log f(y_{i,t} \mid \mu_{i,t}^{(s)}, \phi_t)
 $${#eq-mstep}
 
-In our case, we have already optimized $\boldsymbol\theta$ from the forward model and treat it as fixed. Thus, only the E-step is required to infer posterior source probabilities $\hat p_i^{(k)}$ for each $k \in \bigbrace{1, \ldots, K}$.
+This schematic can be made more complex by considering that dispersal dynamics may differ across source blocks $s \in S$. Here, we will assume that dispersal dynamics are constant across blocks. That is, we will continue to estimate a global parameter vector, $\boldsymbol\theta$ as opposed to a source-specific $\boldsymbol\theta^{(s)}$. 
 
-Note that our forward model did not estimate a separate mean response $\mu_{i,t}^{(k)}$ for each source group $k$.To evaluate the posterior probabilities in the E-step, we must therefore reconstruct hypothetical mean responses under the assumption that only group $C_k$ contributed to infection. Using parameter estimates from the forward model, we define:
+Note that this new modeling framework requires a prior on the number of sources $S$. Here, we propose to assign each plant $i$ to one of $S$ evenly-divided and non-overlapping potential source groups $G_s \subset i \in \bigbrace{1, 2, \ldots, n}$ (@fig-sourcegroup). 
+
+```{r}
+#| echo: false
+#| message: false
+#| label: fig-sourcegroup
+#| fig-align: center
+#| fig-cap: "Schematics for each of the four grouping strategies considered in this study; corresponding to 16, 8, and 4 plants per source group from left to right."
+#| fig-width: 8
+#| cache: true
+
+library(tidyverse)
+library(here)
+library(sf)
+
+clusters <- readRDS(here("DataProcessed/experimental/clusters.rds"))
+
+plant_clust <- bind_rows(clusters$stripe_4$stripe_assigned %>% mutate,
+                         clusters$stripe_8h$stripe_assigned,
+                         clusters$stripe_8v$stripe_assigned,
+                         clusters$stripe_16$stripe_assigned)
+
+grid <- bind_rows(clusters$stripe_4$grid,
+                  clusters$stripe_8h$grid,
+                  clusters$stripe_8v$grid,
+                  clusters$stripe_16$grid)
+
+plant_clust_sp <- plant_clust %>% 
+  select(grid_id, grid_type, geometry) %>% 
+  distinct()
+
+grid %>% 
+  ggplot()+
+  geom_sf(fill = "transparent")+
+  geom_sf_text(aes(label = grid_id))+
+  facet_wrap(~grid_type, nrow = 1)+
+  labs(x = "E", y = "N")+
+  theme_classic()
+```
+
+At each iteration, we will specifically update $\hat\mu_{i,t}^{(s)}$ as
+
 $$
-\hat\mu_{i,t}^{(k)} = \logit^{-1}\bigpar{\hat\eta_{i,t}^{(k)}} = \hat\beta + \hat\delta y_{i,t-1}(1 - y_{i,t-1}) + \hat\gamma \sum_{j \in C_k} \bigpar{y_{j,t-1} w_{ij} (d_{ij} + d_0)^{-\hat\kappa}}
+\hat\mu_{i,t}^{(s)} = \logit^{-1}\bigpar{\hat\eta_{i,t}^{(s)}} = \hat\beta + \hat\delta y_{i,t-1}(1 - y_{i,t-1}) + \hat\gamma \sum_{j \in G_s} \bigpar{y_{j,t-1} w_{ij} (d_{ij} + d_0)^{-\hat\kappa}}
+$${#eq-meanmod2}
+
+where $\hat\cdot$ denotes the MLE estimates from the global model, with gradients updated to reflect $\hat p_i^{(s)}$ (@eq-newgrad - @eq-gradphi). Letting $y_{i,t}^* = \log\bigpar{\frac{y_{i,t}}{1 - y_{i,t}}}$ and $\mu_{i,t}^* = \psi(\mu_{i,t}^{(s)}\phi_t)-\psi((1-\mu_{i,t}^{(s)})\phi_t)$, we have that
+
 $$
-That is, we recompute the dispersal component of the linear predictor $\hat\eta_{i,t}^{(k)}$ using only the subset of sources $j \in C_k$, while holding all estimated parameters fixed at their forward-model values.
+\frac{\partial Q}{\partial \mu_{i,t}^{(s)}} \times \frac{\partial \mu_{i,t}^{(s)}}{\partial\eta_{i,t}} \nsum \sum_{s=1}^S \hat p_i^{(s)} \cdot \phi_t(y_{i,t}^* - \mu_{i,t}^*) \cdot \mu_{i,t}^{(s)}(1 - \mu_{i,t}^{(s)})
+$$ {#eq-newgrad}
 
-To complete the backward modeling framework, we must choose a source grouping scheme. One straightforward approach is to partition the $n$ survey units into $K$ evenly-sized clusters, each defining a source group $C_k$. The number of source groups $K$ can then be selected based on model performance metrics such as prediction error or information criteria.
+Denoting the summand as $\text{grad}_{i,t}^{(s)}$, we can then write the updated gradients as 
 
+$$
+\begin{split}
+\frac{\partial Q}{\partial\beta} &= \nsum \sum_{s=1}^S\text{grad}_{i,t}^{(s)} \\
+\frac{\partial Q}{\partial\delta} &= \nsum \sum_{s=1}^S\text{grad}_{i,t}^{(s)}\times y_{i,t-1}(1 - y_{i,t-1}) \\
+\frac{\partial Q}{\partial\gamma} &= \nsum \sum_{s=1}^S\text{grad}_{i,t}^{(s)} \times \sum_{j \in G_s}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}} \\
+\frac{\partial Q}{\partial\kappa} &= \nsum \sum_{s=1}^S\text{grad}_{i,t}^{(s)} \times -\gamma \sum_{j \in G_s}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}\log(d_{ij} + d_0)}
+\end{split}
+$${#eq-newgrads}
 
+and we can directly derive the new gradient for $\phi_t$ as 
+
+$$
+\frac{\partial Q}{\partial \phi_t} = \nsum \sum_{s = 1}^S \hat p_i^{(s)} \bigbrak{\psi(\phi_t) - \mu_{i,t}^{(s)} \psi(\mu_{i,t}^{(s)} \phi_t) - (1 - \mu_{i,t}^{(s)}) \psi(\phi_t(1 - \mu_{i,t}^{(s)})) + \mu_{i,t}^{(s)} \log y_{i,t} + (1 - \mu_{i,t}^{(s)}) \log (1 - y_{i,t})}
+$${#eq-gradphi}
+
+Initial estimates for $\boldsymbol\theta$ will be the estimated MLEs from the forward model. 
 \newpage
 
 # References

@@ -110,16 +110,24 @@ initialize_theta <- function(y_cur, y_prev, wind_mat, dist_mat, d_0, kappa_try) 
   
 }
 # --- function for log-likelihood ---
-loglik_beta <- function(y, mu, phi, sum = T) {
-  ll <- lgamma(phi) -
-    lgamma(mu * phi) -
-    lgamma((1 - mu) * phi) +
-    (mu * phi - 1) * log(y) +
-    ((1 - mu) * phi - 1) * log(1 - y)
+loglik_beta <- function(y, mu, phi, sum = T, log = T) {
+  #Compute the log-likelihood
+  lik <- lgamma(phi) -
+      lgamma(mu * phi) -
+      lgamma((1 - mu) * phi) +
+      (mu * phi - 1) * log(y) +
+      ((1 - mu) * phi - 1) * log(1 - y)
+  
+  #Exponentiate if needed
+  if(log == F) {
+      lik <- exp(lik)
+    }
+  
+  #Return the likelhood (sum = T) or density (sum = F)
   if (sum) {
-    return(sum(ll))
+    return(sum(lik))
   }else{
-    return(ll)
+    return(lik)
   }
 }
 
@@ -157,6 +165,7 @@ neg_loglik_logistic <- function(par, y_current, y_prev, wind_matrix, dist_matrix
 }
 
 # --- function for gradients ---
+
 neg_grad <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01) {
   beta  <- par["beta"]
   delta <- par["delta"]

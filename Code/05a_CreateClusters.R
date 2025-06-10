@@ -22,14 +22,15 @@ stripe <- readRDS(here("DataProcessed/experimental/stripe_clean.rds"))
 stripe_sp <- stripe %>% 
   st_as_sf(coords = c("east", "north"))
 
-assign_grid <- function(dat, n_rows, n_cols){
+assign_grid <- function(dat, n_rows, n_cols, name){
 
   # Step 3: Create a grid (polygon) over the bounding box
   grid <- st_make_grid(dat, n = c(n_cols, n_rows), what = "polygons") %>%
-    st_sf(grid_id = seq_len(length(.)))
+    st_sf(grid_id = seq_len(length(.))) %>% 
+    mutate(grid_type = name)
   
   # Step 4: Spatial join to assign each plant to a grid cell
-  plants_partitioned <- st_join(stripe_sp, grid)
+  plants_partitioned <- st_join(stripe_sp, grid) %>% mutate(grid_type = name)
   
   # Step 5: Assign centroid of grid
   grid_centroid <- st_centroid(grid)
@@ -47,10 +48,10 @@ assign_grid <- function(dat, n_rows, n_cols){
 }
 
 #Create boxes 
-stripe_4 <- assign_grid(stripe_sp, n_rows = 2, n_cols = 2)
-stripe_8h <- assign_grid(stripe_sp, n_rows = 4, n_cols = 2)
-stripe_8v <- assign_grid(stripe_sp, n_rows = 2, n_cols = 4)
-stripe_16 <- assign_grid(stripe_sp, n_rows = 4, n_cols = 4)
+stripe_4 <- assign_grid(stripe_sp, n_rows = 2, n_cols = 2, name = "2 x 2")
+stripe_8h <- assign_grid(stripe_sp, n_rows = 4, n_cols = 2, name = "4 x 2")
+stripe_8v <- assign_grid(stripe_sp, n_rows = 2, n_cols = 4, name = "2 x 4")
+stripe_16 <- assign_grid(stripe_sp, n_rows = 4, n_cols = 4, name = "4 x 4")
 
 #Save them in a list
 clusters <- list(
