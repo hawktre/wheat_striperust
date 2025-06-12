@@ -70,8 +70,7 @@ get_wind_mat <- function(first_day, last_day, wind, dir.mat){
   wind.tmp <- wind %>% 
     filter(datetime >= first_day, datetime < last_day) %>% 
     group_by(cardinal, cardinal.dir) %>% 
-    summarise(speed = mean(speed)) %>% 
-    ungroup()
+    summarise(speed = mean(speed), .groups = "drop") 
   
   wind_angles <- wind.tmp[['cardinal.dir']]
   wind_speeds <- wind.tmp[['speed']]

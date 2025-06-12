@@ -21,36 +21,43 @@ logit <- function(p) log(p / (1 - p))
 inv_logit <- function(x) 1 / (1 + exp(-x))
 
 # Compute Likelihood ---------------------------------------------------------
-lik_beta <- function(y, mu_mat, phi, sum = TRUE, log = TRUE, neg = F) {
-  # Expand y and phi to match shape of mu if needed
-  y <- matrix(y, nrow = nrow(mu_mat), ncol = ncol(mu_mat))  # Repeat y across columns
-  phi <- matrix(phi, nrow = nrow(mu_mat), ncol = ncol(mu_mat))  # Repeat phi across columns (if scalar)
+lik_beta <- function(y, mu_mat, phi, sum = TRUE, log = TRUE) {
+  y <- matrix(y, nrow = nrow(mu_mat), ncol = ncol(mu_mat))  
+  phi <- matrix(phi, nrow = nrow(mu_mat), ncol = ncol(mu_mat))  
   
-  # Compute log-likelihood elementwise
   val <- lgamma(phi) -
     lgamma(mu_mat * phi) -
     lgamma((1 - mu_mat) * phi) +
     (mu_mat * phi - 1) * log(y) +
     ((1 - mu_mat) * phi - 1) * log(1 - y)
   
-  # Convert to raw likelihood if needed
   if (!log) {
     val <- exp(val)
   }
   
-  # Create variable to return negative if requested
-  if(neg){
-    neg_val <- -1
-  }else{
-    neg_val <- 1
-  }
-  
-  # Return row sums or full matrix
   if (sum) {
-    return(neg_val * rowSums(val))
+    return(rowSums(val))
   } else {
     return(val)
   }
+}
+
+Q_fun <- function(y, mu_mat, phi, p_mat) {
+  lik_mat <- lik_beta(y, mu_mat, phi, sum = FALSE)
+  Q_val <- sum(p_mat * lik_mat)
+  return(-Q_val)
+}
+
+wrapped_obj <- function(par, y_current, y_prev, wind_matrix, dist_matrix, group_id, p_mat, d0 = 0.01) {
+  mu_mat <- get_mu(par = par,
+                   y_current = y_current,
+                   y_prev = y_prev,
+                   wind_matrix = wind_matrix,
+                   dist_matrix = dist_matrix,
+                   d0 = d0,
+                   group_id = group_id)
+  phi <- par["phi"]
+  Q_fun(y = y_current, mu_mat = mu_mat, phi = phi, p_mat = p_mat)
 }
 
 
@@ -111,14 +118,19 @@ get_mu <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01, 
 }
 
 # E-step ------------------------------------------------------------------
-e_step <- function(y, mu_mat, phi, prior, group_id){
+e_step <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01, group_id, prior){
+  
+  mu_mat <- get_mu(par, par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01, group_id)
+  
+  S <- length(unique(group_id))
+  
   #If the prior is a constant, make it a vector of length n
   if(length(prior) == 1){
-    prior <- rep(prior, n)
+    prior <- rep(prior, S)
   }
   
   #Compute the weighted likelihoods
-  wl_mat <- prior * lik_beta(y, mu_mat, phi)
+  wl_mat <- prior * lik_beta(y_current, mu_mat, par[["phi"]], sum = F, log = F)
   
   #Compute posterior probabilities
   p_mat <- wl_mat / rowSums(wl_mat)
@@ -128,55 +140,41 @@ e_step <- function(y, mu_mat, phi, prior, group_id){
 
 
 # M-step ------------------------------------------------------------------
-mstep_grad <- function(par, y_current, y_prev, wind_list, dist_list, p_hat_mat, d0 = 0.01) {
+mstep_grad_em <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01, group_id, p_mat) {
   beta  <- par["beta"]
   delta <- par["delta"]
   gamma <- par["gamma"]
   kappa <- par["kappa"]
-  phi   <- pmax(par["phi"], 1e-6)
+  phi   <- par["phi"]
   
-  n <- length(y_current)
-  S <- length(wind_list)
+  phi <- pmax(phi, 1e-6)
   
-  # Initialize gradients
-  d_beta  <- 0
-  d_delta <- 0
-  d_gamma <- 0
-  d_kappa <- 0
-  d_phi   <- 0
+  # Compute predicted mu matrix (n x S)
+  mu_mat <- get_mu(par, y_current, y_prev, wind_matrix, dist_matrix, d0, group_id)
   
+  # Compute derivatives
   y_star <- logit(y_current)
+  mu_star <- digamma(mu_mat * phi) - digamma((1 - mu_mat) * phi)
+  weight <- phi * (y_star - mu_star) * mu_mat * (1 - mu_mat)
   
-  for (s in 1:S) {
-    wind_matrix <- wind_list[[s]]
-    dist_matrix <- dist_list[[s]]
-    p_hat <- p_hat_mat[, s]
-    
-    # Get eta and mu for group s
-    dispersal <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa)
-    eta <- beta + delta * (y_prev * (1 - y_prev)) + gamma * dispersal
-    mu  <- inv_logit(eta)
-    mu  <- pmin(pmax(mu, 1e-6), 1 - 1e-6)
-    
-    mu_star <- digamma(mu * phi) - digamma((1 - mu) * phi)
-    grad <- phi * (y_star - mu_star) * mu * (1 - mu)
-    
-    # Apply group-weighted contributions
-    d_beta  <- d_beta  + sum(p_hat * grad)
-    d_delta <- d_delta + sum(p_hat * grad * y_prev * (1 - y_prev))
-    d_gamma <- d_gamma + sum(p_hat * grad * dispersal)
-    
-    dispersal_deriv <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa, derivative = TRUE)
-    d_kappa <- d_kappa + sum(p_hat * grad * (-gamma) * dispersal_deriv)
-    
-    d_phi <- d_phi + sum(p_hat * (
-      mu * (y_star - mu_star) +
-        log(1 - y_current) - digamma((1 - mu) * phi) +
-        digamma(phi)
-    ))
-  }
   
-  # Return negative gradient vector
+  # Create model matrices for each term (n x S)
+  y_prev_term <- outer(y_prev * (1 - y_prev), rep(1, ncol(mu_mat)))
+  dispersal_term <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa, group_id = group_id)
+  dispersal_term_deriv <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa, derivative = TRUE, group_id = group_id)
+  
+  # Weight everything by p_mat
+  d_beta  <- sum(p_mat * weight)
+  d_delta <- sum(p_mat * weight * y_prev_term)
+  d_gamma <- sum(p_mat * weight * dispersal_term)
+  d_kappa <- sum(p_mat * weight * (-gamma) * dispersal_term_deriv)
+  
+  
+  # phi derivative (as scalar sum over i and k)
+  d_phi <- sum(p_mat * (mu_mat * (y_star - mu_star) +
+                          log(1 - y_current) -
+                          digamma((1 - mu_mat) * phi) +
+                          digamma(phi)))
+  
   -c(beta = d_beta, delta = d_delta, gamma = d_gamma, kappa = d_kappa, phi = d_phi)
 }
-
