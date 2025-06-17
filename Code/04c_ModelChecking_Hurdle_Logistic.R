@@ -51,25 +51,33 @@ fits <- readRDS(here("DataProcessed/results/all_fits_hurdle_logistic.rds"))
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat.rds"))
 
 ## Read in necessary functions
-source(here("Code/01b_GradDescent_fun.R"))
+source(here("Code/04a_GradDescent-Hurdle_fun.R"))
 
 
 # Define function for residuals -------------------------------------------
 compute_deviance_resid <- function(y, mu_hat, pi, phi_hat) {
-  # Saturated model log-likelihood: mu = y
-  ll_sat <- loglik_beta(y, y, phi_hat, sum = F)
-  # Fitted model log-likelihood
-  ll_fit <- loglik_beta(y, mu_hat, phi_hat, sum = F)
+  is_zero <- y == 0
+  is_pos <- !is_zero
+  
+  ll_fit <- numeric(length(y))
+  ll_sat <- numeric(length(y))
+  
+  # Zero values
+  ll_fit[is_zero] <- log(pi)
+  ll_sat[is_zero] <- log(pi)  # same since model fits perfectly
+  
+  # Positive values
+  ll_fit[is_pos] <- log(1 - pi) + loglik_beta(y[is_pos], mu_hat[is_pos], phi_hat, sum = FALSE)
+  ll_sat[is_pos] <- log(1 - pi) + loglik_beta(y[is_pos], y[is_pos], phi_hat, sum = FALSE)
   
   sqrt_term <- pmax(0, 2 * (ll_sat - ll_fit))
-  
-  # Deviance residuals
-  sign(y - mu_hat) * sqrt(sqrt_term)
+  sign(y - (1 - pi) * mu_hat) * sqrt(sqrt_term)
 }
 
 # Get predictions & residuals ---------------------------------------------------------
 fit.summarise <- function(fits, mod_dat){
   for (plt_visit in names(fits)) {
+
     #Subset visit and data
     fit <- fits[[plt_visit]]
     dat <- mod_dat[[fit$plot_id]][[fit$visit]]
@@ -93,16 +101,16 @@ fit.summarise <- function(fits, mod_dat){
     # Compute predictions
     eta <- params[['beta']] + params[['delta']]*X1 + params[['gamma']]*X2
     mu_hat <- inv_logit(eta)
-    dev_resid <- compute_deviance_resid(y = dat$y_cur, mu_hat = mu_hat, phi_hat = params[['phi']])
+    fitted <- (1-pi)*mu_hat
+    dev_resid <- compute_deviance_resid(y = dat$y_cur, mu_hat = mu_hat, phi_hat = params[['phi']], pi = pi)
     dev <- sum(dev_resid^2)
     # Assign predictions and residuals
-    fits[[plt_visit]]$y_pred <- list(mu_hat)
-    fits[[plt_visit]]$resid <- list(dev_resid) 
+    fits[[plt_visit]]$y_pred <- list(fitted)
+    fits[[plt_visit]]$resid <- list(dev_resid)
     fits[[plt_visit]]$deviance <- dev 
     
     #Assign th the data object for plotting
-    mod_dat[[fit$plot_id]][[fit$visit]][['y_pred_conditional']] <- mu_hat 
-    mod_dat[[fit$plot_id]][[fit$visit]][['y_pred_marginal']] <- mu_hat * (1 - pi)
+    mod_dat[[fit$plot_id]][[fit$visit]][['y_pred']] <- fitted
     mod_dat[[fit$plot_id]][[fit$visit]][['dev_resid']] <- dev_resid
     
     
@@ -114,7 +122,7 @@ fit.summarise <- function(fits, mod_dat){
 # Apply fit.summarise to free model
 out_free <- fit.summarise(fits$free, mod_dat)
 
-out_constrained <- list()
+out_constrained<- list()
 for (gamma_max in names(fits$constrained)) {
   fit <- fits$constrained[[gamma_max]]
   

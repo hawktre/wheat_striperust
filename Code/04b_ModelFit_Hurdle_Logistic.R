@@ -63,7 +63,7 @@ library(here)
 # Read in the data --------------------------------------------------------
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat.rds"))
 source(here("Code/01a_DataFormat_Fun.R"))
-source(here("Code/01b_GradDescent_fun.R"))
+source(here("Code/04a_GradDescent-Hurdle_fun.R"))
 
 
 # Fit the model -----------------------------------------------------------
@@ -88,8 +88,8 @@ for (plot_id in names(mod_dat)) {
       fit <- try(
         optim(
           par = init_theta,
-          fn = neg_loglik_logistic,
-          gr = neg_grad_logistic,
+          fn = neg_loglik,
+          gr = neg_grad,
           method = "BFGS",
           control = list(maxit = 5000, reltol = 1e-8),
           y_current = dat$y_cur[non_zero],
@@ -159,8 +159,8 @@ for (gamma_max in gamma_max_vals) {
         fit <- tryCatch({
           optim(
             par = init_theta,
-            fn = neg_loglik_logistic,
-            gr = neg_grad_logistic,
+            fn = neg_loglik,
+            gr = neg_grad,
             method = "L-BFGS-B",
             lower = lower_bounds,
             upper = upper_bounds,

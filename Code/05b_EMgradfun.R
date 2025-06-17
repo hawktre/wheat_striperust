@@ -10,11 +10,6 @@
 ##
 ##
 ## ---------------------------
-
-## view outputs in non-scientific notation
-
-options(scipen = 6, digits = 4) 
-
 ## ---------------------------
 # --- Logit and Inverse Logit ---
 logit <- function(p) log(p / (1 - p))
@@ -22,6 +17,7 @@ inv_logit <- function(x) 1 / (1 + exp(-x))
 
 # Compute Likelihood ---------------------------------------------------------
 lik_beta <- function(y, mu_mat, phi, sum = TRUE, log = TRUE) {
+
   y <- matrix(y, nrow = nrow(mu_mat), ncol = ncol(mu_mat))  
   phi <- matrix(phi, nrow = nrow(mu_mat), ncol = ncol(mu_mat))  
   
@@ -43,14 +39,26 @@ lik_beta <- function(y, mu_mat, phi, sum = TRUE, log = TRUE) {
 }
 
 Q_fun <- function(y, mu_mat, phi, p_mat) {
-  lik_mat <- lik_beta(y, mu_mat, phi, sum = FALSE)
+  #Estimate pi and where y == 0
+  pi <- mean(y == 0)
+  zero_idx <- which(y == 0)
+  
+  S <- ncol(mu_mat)
+  #Compute weighted likelihood matrix
+  lik_mat <- (1-pi) * lik_beta(y, mu_mat, phi, sum = F, log = F) #When y > 0
+  
+  if(!is.null(zero_idx)){
+  lik_mat[zero_idx, 1:S] <- pi #when y == 0
+  }
+  
+  #compute Q-val
   Q_val <- sum(p_mat * lik_mat)
   return(-Q_val)
 }
 
 wrapped_obj <- function(par, y_current, y_prev, wind_matrix, dist_matrix, group_id, p_mat, d0 = 0.01) {
+  
   mu_mat <- get_mu(par = par,
-                   y_current = y_current,
                    y_prev = y_prev,
                    wind_matrix = wind_matrix,
                    dist_matrix = dist_matrix,
@@ -97,19 +105,25 @@ kappa_inner_sum <- function(y_prev, wind_matrix, dist_matrix, d0, kappa,
 
 
 # Mean function -----------------------------------------------------------
-get_mu <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01, group_id) {
+get_mu <- function(par, y_prev, wind_matrix, dist_matrix, d0 = 0.01, group_id) {
   beta  <- par["beta"]
   delta <- par["delta"]
   gamma <- par["gamma"]
   kappa <- par["kappa"]
   phi   <- par["phi"]
   
+  
+  #Compute Covariates
+  ## Dispersal 
   dispersal <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa, group_id = group_id)
+  
   n <- length(y_prev)
   S <- ncol(dispersal)
   
+  ## Auto-infection
   y_vec <- y_prev * (1 - y_prev)
   y_mat <- matrix(y_vec, nrow = n, ncol = S)  # broadcast across columns
+  
   
   eta_mat <- beta + delta * y_mat + gamma * dispersal
   mu_mat  <- inv_logit(eta_mat)
@@ -119,9 +133,14 @@ get_mu <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01, 
 
 # E-step ------------------------------------------------------------------
 e_step <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01, group_id, prior){
+  mu_mat <- get_mu(par = par,
+                   y_prev = y_prev,
+                   wind_matrix = wind_matrix,
+                   dist_matrix = dist_matrix,
+                   group_id = group_id,
+                   d0 = d0)
   
-  mu_mat <- get_mu(par, par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01, group_id)
-  
+  n <- length(y_current)
   S <- length(unique(group_id))
   
   #If the prior is a constant, make it a vector of length n
@@ -129,8 +148,13 @@ e_step <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01, 
     prior <- rep(prior, S)
   }
   
-  #Compute the weighted likelihoods
-  wl_mat <- prior * lik_beta(y_current, mu_mat, par[["phi"]], sum = F, log = F)
+  # Estimate pi from the current data
+  pi <- mean(y_current == 0)
+  zero_idx <- which(y_current == 0)
+  
+  # Initialize weighted likelihood matrix
+  wl_mat <- prior * (1-pi) * lik_beta(y_current, mu_mat, par[['phi']], sum = F, log = F)
+  wl_mat[zero_idx, 1:S] <- prior*pi 
   
   #Compute posterior probabilities
   p_mat <- wl_mat / rowSums(wl_mat)
@@ -141,16 +165,15 @@ e_step <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01, 
 
 # M-step ------------------------------------------------------------------
 mstep_grad_em <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01, group_id, p_mat) {
+ 
   beta  <- par["beta"]
   delta <- par["delta"]
   gamma <- par["gamma"]
   kappa <- par["kappa"]
   phi   <- par["phi"]
   
-  phi <- pmax(phi, 1e-6)
-  
   # Compute predicted mu matrix (n x S)
-  mu_mat <- get_mu(par, y_current, y_prev, wind_matrix, dist_matrix, d0, group_id)
+  mu_mat <- get_mu(par, y_prev, wind_matrix, dist_matrix, d0, group_id)
   
   # Compute derivatives
   y_star <- logit(y_current)
