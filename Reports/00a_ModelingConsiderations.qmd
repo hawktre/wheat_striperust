@@ -37,7 +37,7 @@ format:
     cap-location: bottom
     tbl-cap-location: bottom
     header-includes: 
-      - \usepackage{fancyhdr, amsthm, amssymb,amsfonts,amsthm, mystyle, amsmath}
+      - \usepackage{fancyhdr, amsthm, amssymb,amsfonts,amsthm, mystyle, amsmath, bbm}
       - \usepackage{float, tabularx}
       - \floatplacement{table}{H}
       - \pagestyle{fancy}
@@ -159,6 +159,42 @@ Variables, parameters definitions, and interpretations for @eq-meanmod are outli
 
 \small Covariates, parameters, and their interpretations for the proposed model from @eq-meanmod.
 :::
+
+# Handling Zeros
+
+While the Beta distribution is a natural choice for modeling continuous proportions, it is important to note that its domain excludes zero and one. In our dataset, zero values frequently occur during early transitions when plants have not yet been infected by the fungus. To address this, we adopt a zero-inflated Beta modeling strategy as outlined by @ospina2010. Although our data do not include ones—since complete infection of plant tissue is biologically implausible—the same framework could be extended to handle that scenario.
+
+Recall that we denote the general pdf of our beta distribution as $f(y;\mu, \phi)$, and its CDF as $F(y;\mu, \phi)$. Because the Beta distribution cannot assign mass to zero, we define a mixture distribution with a point mass at zero and a Beta distribution over the open interval $(0,1)$. Letting $0 < \alpha < 1$ denote the probability that an observation is exactly zero, the CDF of this zero-inflated Beta mixture is given by
+
+$$
+\text{BI}_0(y; \alpha, \mu, \phi) = \alpha \indicate{y = 0} + (1-\alpha)F(y; \mu, \phi)
+$$ {#eq-zicdf}
+
+Its corresponding PDF is
+
+$$
+\text{bi}_0(y; \alpha, \mu, \phi) = \begin{cases} \alpha & y = 0\\
+(1-\alpha)f(y;\mu, \phi) & y \in (0,1)
+\end{cases}
+$$ {#eq-zipdf}
+
+The expectation and variance of this mixture distribution are:
+
+$$
+\begin{split}
+\E{y} &= (1 - \alpha)\mu \\
+\Var{y} &= (1-\alpha)\frac{\mu(1-\mu)}{1 + \phi} + \alpha(1-\alpha)\mu^2
+\end{split}
+$$ {#eq-zimeanvar}
+
+In some cases, users may wish to model the mixing parameter $\alpha$ separately (e.g., as a function of covariates). In this work, we adopt a simpler "hurdle model" formulation, in which we estimate $\alpha_t$ at each time point using the empirical maximum likelihood estimator:
+
+$$
+\hat\alpha_t = \frac{\nsum \indicate{y_{i,t} = 0}}{n}
+$$
+
+This approach allows us to optimize the Beta model parameters using only the non-zero observations at each transition, while adjusting the expectation accordingly using the estimated value $\hat\alpha_t$. Consequently, the derivations in the next section are based solely on the conditional likelihood of the non-zero responses, as the zero-mass component does not influence the optimization of the Beta parameters.
+
 
 # Model Implementation
 
@@ -310,58 +346,48 @@ $$
 
 Note that this angle is centered on the positive y-axis, such that if target $i$ is directly North of source $j$ then $\psi_{ij} = 0$; ; if target $i$ is directly East of source $j$ then $\psi_{ij} = \frac{\pi}{2}$; etc. Now, given the wind speed and direction, we first aggregate wind directions into bins for each of the 16 cardinal directions:
 
-:::{tbl-cardinal}
-
-| Direction | Degrees-Azimuth       | Radians           | Midpoint (°) | Midpoint (rad) |
-|-----------|------------------------|-------------------|--------------|----------------|
-| N         | [348.75, 11.25)        | [6.08, 0.20)      | 0.00         | 0.00           |
-| NNE       | [11.25, 33.75)         | [0.20, 0.59)      | 22.50        | 0.39           |
-| NE        | [33.75, 56.25)         | [0.59, 0.98)      | 45.00        | 0.79           |
-| ENE       | [56.25, 78.75)         | [0.98, 1.38)      | 67.50        | 1.18           |
-| E         | [78.75, 101.25)        | [1.38, 1.77)      | 90.00        | 1.57           |
-| ESE       | [101.25, 123.75)       | [1.77, 2.16)      | 112.50       | 1.96           |
-| SE        | [123.75, 146.25)       | [2.16, 2.55)      | 135.00       | 2.36           |
-| SSE       | [146.25, 168.75)       | [2.55, 2.95)      | 157.50       | 2.75           |
-| S         | [168.75, 191.25)       | [2.95, 3.34)      | 180.00       | 3.14           |
-| SSW       | [191.25, 213.75)       | [3.34, 3.73)      | 202.50       | 3.53           |
-| SW        | [213.75, 236.25)       | [3.73, 4.12)      | 225.00       | 3.93           |
-| WSW       | [236.25, 258.75)       | [4.12, 4.52)      | 247.50       | 4.32           |
-| W         | [258.75, 281.25)       | [4.52, 4.91)      | 270.00       | 4.71           |
-| WNW       | [281.25, 303.75)       | [4.91, 5.30)      | 292.50       | 5.11           |
-| NW        | [303.75, 326.25)       | [5.30, 5.69)      | 315.00       | 5.50           |
-| NNW       | [326.25, 348.75)       | [5.69, 6.08)      | 337.50       | 5.89           |
-
+::: {tbl-cardinal}
+| Direction | Degrees-Azimuth   | Radians       | Midpoint (°) | Midpoint (rad) |
+|-----------|-------------------|---------------|--------------|----------------|
+| N         | \[348.75, 11.25)  | \[6.08, 0.20) | 0.00         | 0.00           |
+| NNE       | \[11.25, 33.75)   | \[0.20, 0.59) | 22.50        | 0.39           |
+| NE        | \[33.75, 56.25)   | \[0.59, 0.98) | 45.00        | 0.79           |
+| ENE       | \[56.25, 78.75)   | \[0.98, 1.38) | 67.50        | 1.18           |
+| E         | \[78.75, 101.25)  | \[1.38, 1.77) | 90.00        | 1.57           |
+| ESE       | \[101.25, 123.75) | \[1.77, 2.16) | 112.50       | 1.96           |
+| SE        | \[123.75, 146.25) | \[2.16, 2.55) | 135.00       | 2.36           |
+| SSE       | \[146.25, 168.75) | \[2.55, 2.95) | 157.50       | 2.75           |
+| S         | \[168.75, 191.25) | \[2.95, 3.34) | 180.00       | 3.14           |
+| SSW       | \[191.25, 213.75) | \[3.34, 3.73) | 202.50       | 3.53           |
+| SW        | \[213.75, 236.25) | \[3.73, 4.12) | 225.00       | 3.93           |
+| WSW       | \[236.25, 258.75) | \[4.12, 4.52) | 247.50       | 4.32           |
+| W         | \[258.75, 281.25) | \[4.52, 4.91) | 270.00       | 4.71           |
+| WNW       | \[281.25, 303.75) | \[4.91, 5.30) | 292.50       | 5.11           |
+| NW        | \[303.75, 326.25) | \[5.30, 5.69) | 315.00       | 5.50           |
+| NNW       | \[326.25, 348.75) | \[5.69, 6.08) | 337.50       | 5.89           |
 
 : Directional bins for each of the 16 cardinal directions in degrees-azimuth and radians (centered on North)
-
 :::
 
 Then we follow the process outlined by @gent2019:
 
-  1. Scale the average wind speed by the percentage of time between time point $t$ and $t-1$ for each of the 16 cardinal directions. Denote this vector of directionally binned wind speeds as $\boldsymbol{\omega} = \{\omega_k\}$ $(k=1, \ldots, 16)$.
+1.  Scale the average wind speed by the percentage of time between time point $t$ and $t-1$ for each of the 16 cardinal directions. Denote this vector of directionally binned wind speeds as $\boldsymbol{\omega} = \{\omega_k\}$ $(k=1, \ldots, 16)$.
 
-  2. Letting $\boldsymbol{\alpha} = \{\alpha_k\}$ denote the vector of midpoints (in radians) for the 16 cardinal wind directions, define the vector of angular differences relative to the direction from source $j$ to target $i$, denoted $\psi_{ij}$:
-  $$
-  \Delta_k = \left| \mathrm{atan2}\left( \sin(\alpha_k - \psi_{ij}), \cos(\alpha_k - \psi_{ij}) \right) \right|, \quad k = 1, \ldots, 16
-  $$
-  Then, define the subset of indices:
-  $$
-  \mathcal{K}_{ij} = \left\{ k : \Delta_k < \frac{\pi}{2} \right\}
-  $$
-  That is, select the cardinal directions whose angular distance from $\psi_{ij}$ is less than $\frac{\pi}{2}$.
-  
-  3. Orthogonally project each scaled wind vector from the selected directions onto $\psi_{ij}$:
-  $$
-  p_k = \omega_k \cdot \cos(\Delta_k), \quad \text{for } k \in \mathcal{K}_{ij}
-  $$
-  
-  4. Take $w_{ij}$ as the average of the orthogonal projections:
-  $$
-  w_{ij} = \frac{1}{|\mathcal{K}_{ij}|} \sum_{k \in \mathcal{K}_{ij}} p_k
-  $$
+2.  Letting $\boldsymbol{\alpha} = \{\alpha_k\}$ denote the vector of midpoints (in radians) for the 16 cardinal wind directions, define the vector of angular differences relative to the direction from source $j$ to target $i$, denoted $\psi_{ij}$: $$
+      \Delta_k = \left| \mathrm{atan2}\left( \sin(\alpha_k - \psi_{ij}), \cos(\alpha_k - \psi_{ij}) \right) \right|, \quad k = 1, \ldots, 16
+      $$ Then, define the subset of indices: $$
+      \mathcal{K}_{ij} = \left\{ k : \Delta_k < \frac{\pi}{2} \right\}
+      $$ That is, select the cardinal directions whose angular distance from $\psi_{ij}$ is less than $\frac{\pi}{2}$.
 
-Now all pieces of the modeling framework have been accounted for. 
+3.  Orthogonally project each scaled wind vector from the selected directions onto $\psi_{ij}$: $$
+      p_k = \omega_k \cdot \cos(\Delta_k), \quad \text{for } k \in \mathcal{K}_{ij}
+      $$
 
+4.  Take $w_{ij}$ as the average of the orthogonal projections: $$
+      w_{ij} = \frac{1}{|\mathcal{K}_{ij}|} \sum_{k \in \mathcal{K}_{ij}} p_k
+      $$
+
+Now all pieces of the modeling framework have been accounted for.
 
 # References
 

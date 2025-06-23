@@ -213,7 +213,8 @@ for (config in unique(edges$configuration)) {
            alpha = "Dispersed Infection",
            x = "East",
            y = "North")+
-      theme_classic()
+      theme_classic() +
+      theme(legend.position = "bottom")
     
     ggsave(filename = paste0(config, "_", plt, "_preds.png"), path = here("DataProcessed/results/figures/spatial_network_preds/"), width = 8, height = 8)
   }

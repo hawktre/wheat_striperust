@@ -130,6 +130,10 @@ We then optimized the parameter vector $\boldsymbol\theta_{t,s,b}$ separately fo
 \small Covariates, parameters, and their interpretations for the proposed model from @eq-meanmod.
 :::
 
+## Handling Zeros
+
+Recall that we implemented a zero-inflated version of the forward model as described in the previous report. As in the forward case, we adopt a hurdle model formulation by estimating a global parameter $\alpha_t$ at each time transition. Under this approach, the Beta distribution is fit to the non-zero responses only, and $\alpha_t$ is computed separately. Therefore, parameter estimation and gradient-based optimization in both the forward and backward models are conducted exclusively on the non-zero observations. To maintain parsimony, we exclude $\alpha_t$ from the derivations that follow.
+
 ## Introducing a Latent Structure
 
 The ultimate goal of this project is to derive and implement a modeling framework for *source detection*. As a result of working with continuous intensity data, we were conveniently able to consider every plant where $j \neq i$ as a potential source of infection in the forward model. We explicitly accounted for the amount of inoculate moved from plant $j$ to plant $i$ via an orthogonal wind vector $w_{ij}$ as a non-linear function of the distance between plants through the dispersal component of the model (@eq-dispersal). 
