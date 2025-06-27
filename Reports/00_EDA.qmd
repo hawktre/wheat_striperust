@@ -231,8 +231,8 @@ raw_spplot <- function(exp.dat, inoc.dat, block){
     labs(fill = "",
          color = "Disease Intensity",
          title = paste0("Block ", block, " (Intenstiy)"))+
-    theme_minimal()+
-    scale_color_gradient(low = colors[1], high = colors[4])+
+    theme_bw()+
+    scale_color_gradientn(colors = colors, trans = "sqrt")+
     theme(legend.position = "bottom")
 }
 

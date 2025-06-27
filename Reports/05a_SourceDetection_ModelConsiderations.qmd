@@ -55,11 +55,11 @@ bibliography: references.bib
 
 Previous reports in this series have derived and documented a model for the aerial dispersal of  Stripe Rust (*Puccinia striiformis*) among Wheat plants. In these reports, we explored various model formulations and optimization strategies of a forward-model of disease intensity, which we breifly review here in addition to experimental design.
 
-Now that we have optimized the parameter vector $\boldsymbol\theta_{t,s,b}$ for each transition $t$ in each treatment-replicate combination (indexed by $s$ and $b$, respectively), our goal is to derive and implement a backward model which will allow us to infer the likely contributions of each plant or group of plants to observed disease severity. That is, if we let disease intensity of plant $i$ and time $t$ be denoted by $y_{i,t}$, we would like to derive a model for $y_{i,t-1} | y_{i,t}$. Here, we propose a latent-variable approach for the structure and optimization of such a model via the Expectation-Maximization (EM) algorithm. 
+Now that we have optimized the parameter vector $\boldsymbol\theta_{t,s,b}$ for each transition $t$ in each treatment-replicate combination (indexed by $s$ and $b$, respectively), our goal is to derive and implement a backward model which will allow us to infer the likely contributions of each plant or group of plants to observed disease severity. Here, we propose a latent-variable approach for the structure and optimization of such a model via the Expectation-Maximization (EM) algorithm. 
 
 # Methods
 
-We have detailed experimental design rigerously in previous reports (see "00_EDA.qmd"), but let us recall that we index disease severity $Y$  at an individual sample location $i$ at time $t \in \bigpar{1, \ldots, 5}$ by $Y_{i,t}$. Additionally, we can denote the experimental block $b \in (1, 2, 3, 4)$, with replicates distinguished by the number of inoculation sources (treatment-levels) $s \in \bigpar{1, 2, 4}$. Recall that disease severity at sample location $i$ was measured via visual estimation as the proportion of infected plant tissue within a $(0.76m \times 0.76m)$ square, and was expressed as a percentage. Using this measurement scheme, the outcome naturally presents as a continuous measure with bounds at $(0,1)$, which is naturally captured by a $\text{Beta}(a, b)$ distribution where $a$ and $b$ are shape parameters. That is,
+We have detailed experimental design rigorously in previous reports (see "00_EDA.qmd"), but let us recall that we denote disease severity $Y$  at an individual sample location $i$ at time $t \in \bigpar{1, \ldots, 5}$ by $Y_{i,t}$. Additionally, we can denote the experimental block $b \in (1, 2, 3, 4)$, with replicates distinguished by the number of inoculation sources (treatment-levels) $s \in \bigpar{1, 2, 4}$. Recall that disease severity at sample location $i$ was measured via visual estimation as the proportion of infected plant tissue within a $(0.76m \times 0.76m)$ square, and was expressed as a percentage. Using this measurement scheme, the outcome naturally presents as a continuous measure with bounds at $(0,1)$, which is naturally captured by a $\text{Beta}(a, b)$ distribution where $a$ and $b$ are shape parameters. That is,
 
 $$
 Y_{i,t,s,b} \overset{\text{indep.}}{\sim} \text{Beta}(a_{i,t,s,b},b_{i,t,s,b}).
@@ -91,7 +91,7 @@ $$
 \eta_{i,t} = \beta+ \delta y_{i,t-1}(1-y_{i,t-1}) + \gamma\sum_{j \neq i}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}}
 $${#eq-meanmod}
 
-We then optimized the parameter vector $\boldsymbol\theta_{t,s,b}$ separately for each transition from time $t - 1$ to time $t$ and for each treatment-replicate combination. Optimization was performed using the quasi-Newton method with gradient-based Hessian approximation, as implemented in the `optim()` function (`method = "BFGS"`) in `R`. Additional details on covariate formatting and parameter initialization can be found in '00a_ModelingConsiderations.qmd`. 
+We then optimized the parameter vector $\boldsymbol\theta_{t,s,b}$ separately for each transition from time $t - 1$ to time $t$ and for each treatment-replicate combination. Optimization was performed using the quasi-Newton method with gradient-based Hessian approximation, as implemented in the `optim()` function (`method = "BFGS"`) in `R`. Additional details on covariate formatting and parameter initialization can be found in `00a_ModelingConsiderations.qmd`. 
 
 ::: {#tbl-covars}
 \begin{table}
@@ -170,21 +170,21 @@ $$
 \ell(\boldsymbol{\theta} \mid \mathcal{X}) = \nsum \sum_{s=1}^S \indicate{Z_i = s} \cdot \log f(y_{i,t} \mid \mu_{i,t}^{(s)}, \phi_t)
 $${#eq-loglik}
 
-where $\mu_{i,t}^{(s)}$ denotes the predicted mean intensity at $i$ assuming infection from source group $s$. We can then apply the Expectation-Maximization (EM) algorithm to estimate the posterior source probabilities $\hat p^{(s)}$. At each iteration:
+where $\mu_{i,t}^{(s)}$ denotes the predicted mean intensity at $i$ assuming infection from source group $s$. We can then apply the Expectation-Maximization (EM) algorithm to estimate the posterior source probabilities $\hat p^{(s)}_{i,t}$. At each iteration:
 
 \textbf{E-step:} Use Bayes' rule to update
 $$
 \hat p_i^{(s)} =  P(Z_i = s \mid \mathcal{Y}) \propto f(y_{i,t} \mid \mu_{i,t}^{(s)}, \phi_t) \cdot \pi_s
 $${#eq-estep}
 
-Where $\pi_s$ is the prior probability that source group $C_s$ is responsible for infection at unit $i$. A uniform prior over all $S$ source groups is a natural choice: $\pi_s = 1/S$ for all $s$.
+Where $\pi_s$ is the prior probability that source group $s$ is responsible for infection at unit $i$. A uniform prior over all $S$ source groups is a natural choice: $\pi_s = 1/S$ for all $s$.
 
 \textbf{M-step:} Maximize the expected complete-data log-likelihood
 $$
 Q(\boldsymbol\theta) = \nsum \sum_{s=1}^S \hat p_i^{(s)} \cdot \log f(y_{i,t} \mid \mu_{i,t}^{(s)}, \phi_t)
 $${#eq-mstep}
 
-This schematic can be made more complex by considering that dispersal dynamics may differ across source blocks $s \in S$. Here, we will assume that dispersal dynamics are constant across blocks. That is, we will continue to estimate a global parameter vector, $\boldsymbol\theta$ as opposed to a source-specific $\boldsymbol\theta^{(s)}$. 
+This schematic can be made more complex by considering that dispersal dynamics may differ across source blocks $s \in S$. Here, we will assume that dispersal dynamics are constant across blocks. That is, we will continue to estimate a global parameter vector, $\boldsymbol\theta_t$ as opposed to a source-specific $\boldsymbol\theta^{(s)}_t$. 
 
 Note that this new modeling framework requires a prior on the number of sources $S$. Here, we propose to assign each plant $i$ to one of $S$ evenly-divided and non-overlapping potential source groups $G_s \subset i \in \bigbrace{1, 2, \ldots, n}$ (@fig-sourcegroup). 
 
@@ -193,7 +193,7 @@ Note that this new modeling framework requires a prior on the number of sources 
 #| message: false
 #| label: fig-sourcegroup
 #| fig-align: center
-#| fig-cap: "Schematics for each of the four grouping strategies considered in this study; corresponding to 16, 8, and 4 plants per source group from left to right."
+#| fig-cap: "Schematics for each of the four grouping strategies considered in this study; corresponding to 16, 8 (oriented vertically or horizontally), and 4 plants per source group from left to right."
 #| fig-width: 8
 #| cache: true
 
@@ -235,7 +235,7 @@ $${#eq-meanmod2}
 where $\hat\cdot$ denotes the MLE estimates from the global model, with gradients updated to reflect $\hat p_i^{(s)}$ (@eq-newgrad - @eq-gradphi). Letting $y_{i,t}^* = \log\bigpar{\frac{y_{i,t}}{1 - y_{i,t}}}$ and $\mu_{i,t}^* = \psi(\mu_{i,t}^{(s)}\phi_t)-\psi((1-\mu_{i,t}^{(s)})\phi_t)$, we have that
 
 $$
-\frac{\partial Q}{\partial \mu_{i,t}^{(s)}} \times \frac{\partial \mu_{i,t}^{(s)}}{\partial\eta_{i,t}} \nsum \sum_{s=1}^S \hat p_i^{(s)} \cdot \phi_t(y_{i,t}^* - \mu_{i,t}^*) \cdot \mu_{i,t}^{(s)}(1 - \mu_{i,t}^{(s)})
+\frac{\partial Q}{\partial \mu_{i,t}^{(s)}} \times \frac{\partial \mu_{i,t}^{(s)}}{\partial\eta_{i,t}} = \nsum \sum_{s=1}^S \hat p_i^{(s)} \cdot \phi_t(y_{i,t}^* - \mu_{i,t}^*) \cdot \mu_{i,t}^{(s)}(1 - \mu_{i,t}^{(s)})
 $$ {#eq-newgrad}
 
 Denoting the summand as $\text{grad}_{i,t}^{(s)}$, we can then write the updated gradients as 

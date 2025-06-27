@@ -107,7 +107,9 @@ grid <- bind_rows(clusters$stripe_4$grid,
   mutate(configuration = case_when(grid_type == "2 x 2" ~ "stripe_4",
                                    grid_type == "4 x 2" ~ "stripe_8h",
                                    grid_type == "2 x 4" ~ "stripe_8v",
-                                   grid_type == "4 x 4" ~ "stripe_16"))
+                                   grid_type == "4 x 4" ~ "stripe_16")) %>% 
+  rename("geometry" = ".")
+
 
 centroid <- bind_rows(clusters$stripe_4$centroid,
                   clusters$stripe_8h$centroid,
@@ -116,21 +118,21 @@ centroid <- bind_rows(clusters$stripe_4$centroid,
   mutate(configuration = case_when(grid_type == "2 x 2" ~ "stripe_4",
                    grid_type == "4 x 2" ~ "stripe_8h",
                    grid_type == "2 x 4" ~ "stripe_8v",
-                   grid_type == "4 x 4" ~ "stripe_16"))
+                   grid_type == "4 x 4" ~ "stripe_16")) %>% 
+  rename("geometry" = ".")
+
 
 posterior_summaries_self_sp <- left_join(posterior_summaries_long, 
                                          grid, 
                                          by = c("configuration" = "configuration", 
                                                 "pred_group" = "grid_id")) %>% 
-  filter(member_group == pred_group) %>% 
-  rename("geometry" = ".") %>% 
+  filter(member_group == pred_group) %>%
   st_as_sf()
 
 posterior_summaries_others_sp <- left_join(posterior_summaries_long, 
                                            centroid, 
                                            by = c("configuration" = "configuration", "pred_group" = "grid_id")) %>% 
   filter(member_group != pred_group) %>% 
-  rename("geometry" = ".") %>% 
   st_as_sf()
 
 # library(RColorBrewer)
@@ -165,17 +167,16 @@ posterior_summaries_others_sp <- left_join(posterior_summaries_long,
 nodes <- posterior_summaries_long %>% 
   filter(member_group == pred_group) %>%
   left_join(centroid, by = c("member_group" = "grid_id", "configuration")) %>% 
-  rename(geometry = ".") %>% 
   select(plot_id, visit, configuration, member_group, preds, geometry) %>% 
   st_as_sf()
 
 
+# cross-infection probabilities 
 edges <- posterior_summaries_long %>% 
-  filter(member_group != pred_group) %>% 
   left_join(centroid, by = c("pred_group" = "grid_id", "configuration")) %>% 
-  rename(from_geometry = ".") %>% 
+  rename(from_geometry = "geometry") %>% 
   left_join(centroid, by = c("member_group" = "grid_id", "configuration")) %>% 
-  rename(to_geometry = ".") %>% 
+  rename(to_geometry = "geometry") %>% 
   select(plot_id, visit, configuration, preds, member_group, pred_group, to_geometry, from_geometry) %>% 
   rowwise() %>%
   mutate(geometry = st_sfc(st_linestring(rbind(st_coordinates(from_geometry),
@@ -183,12 +184,89 @@ edges <- posterior_summaries_long %>%
                            crs = st_crs(from_geometry))) %>%
   ungroup() %>% 
   select(-c(to_geometry, from_geometry)) %>% 
-  st_as_sf()
+  st_as_sf() %>% 
+  group_by(configuration, plot_id, visit, member_group) %>% 
+  mutate(is_max = if_else(preds == max(preds), 1, 0)) %>% 
+  slice_max(preds) %>% 
+  ungroup()
+
+# Make ground truth for prediction ----------------------------------------
+single_inocs <- inocs %>%
+  filter(grepl("1$", plot_inoc_id))
+
+grid_truth <- grid %>% select(configuration, grid_id) 
+
+for (plt in single_inocs$plot_inoc_id) {
+  tmp <- single_inocs %>% filter(plot_inoc_id == plt)
+  
+  grid_truth[plt] <- as.numeric(lengths(st_contains(grid_truth, tmp)) > 0)
+}
+
+ground_truth <- grid_truth %>%
+  pivot_longer(cols = A1:D1, names_to = "plot_id") %>% 
+  filter(value == 1) %>% 
+  select(configuration, plot_id, grid_id, value, geometry) %>% 
+  arrange(plot_id)
+
+
+
+prediction_df <- posterior_summaries_long %>% 
+  filter(str_detect(plot_id, "1")) %>% 
+  group_by(plot_id, configuration, visit) %>% 
+  filter(preds == max(preds)) %>% 
+  ungroup() %>% 
+  select(configuration, plot_id, visit, pred_group) %>% 
+  left_join(ground_truth, by = c("configuration", "plot_id")) %>% 
+  rename("true_group" = grid_id) %>% 
+  st_drop_geometry() %>% 
+  select(-c(value, geometry))
+  
+
+pred_4   <- prediction_df %>% filter(configuration == "stripe_4") %>% mutate(across(c(true_group, pred_group), ~ factor(.x, levels = 1:4)))
+pred_8h   <- prediction_df %>% filter(configuration == "stripe_8h")%>% mutate(across(c(true_group, pred_group), ~ factor(.x, levels = 1:8)))
+pred_8v  <- prediction_df %>% filter(configuration == "stripe_8v")%>% mutate(across(c(true_group, pred_group), ~ factor(.x, levels = 1:8)))
+pred_16  <- prediction_df %>% filter(configuration == "stripe_16")%>% mutate(across(c(true_group, pred_group), ~ factor(.x, levels = 1:16)))
+
+library(tidymodels)
+multi_metrics <- metric_set(accuracy, kap, f_meas)
+
+metrics_config <- list(
+  stripe_4  = pred_4,
+  stripe_8h = pred_8h,
+  stripe_8v = pred_8v,
+  stripe_16 = pred_16
+) |> 
+  purrr::imap_dfr(~ multi_metrics(.x, truth = true_group, estimate = pred_group) |> 
+                    mutate(configuration = .y), .id = NULL)
+
+metrics_config_plot <- list(
+  stripe_4  = pred_4,
+  stripe_8h = pred_8h,
+  stripe_8v = pred_8v,
+  stripe_16 = pred_16
+) |> 
+  purrr::imap_dfr(~ .x %>%
+                    group_by(plot_id) %>%
+                    multi_metrics(truth = true_group, estimate = pred_group) %>%
+                    mutate(configuration = .y),
+                  .id = NULL)
+
+metrics_config_visit <- list(
+  stripe_4  = pred_4,
+  stripe_8h = pred_8h,
+  stripe_8v = pred_8v,
+  stripe_16 = pred_16
+) |> 
+  purrr::imap_dfr(~ .x %>%
+                    group_by(visit) %>%
+                    multi_metrics(truth = true_group, estimate = pred_group) %>%
+                    mutate(configuration = .y),
+                  .id = NULL)
 
 
 library(wesanderson)
 
-self_infection <- wes_palette("Zissou1", 5, type = "continuous")
+self_infection <- wes_palette("Zissou1", 7, type = "continuous")
 
 config_match <- data.frame(name = c("stripe_4", "stripe_8h", "stripe_8v", "stripe_16"),
                            config = c("2 x 2", "2 x 4", "4 x 2", "4 x 4"))
@@ -196,17 +274,18 @@ config_match <- data.frame(name = c("stripe_4", "stripe_8h", "stripe_8v", "strip
 
 for (config in unique(edges$configuration)) {
   for (plt in unique(edges$plot_id)) {
-    config_type <- config_match %>% filter(name == config) %>% .$config
-    ggplot()+
+    config_type <- config_match %>% filter(name == !!config) %>% .$config
+    
+     ggplot() +
       geom_sf_label(data = nodes %>% filter(plot_id == plt, configuration == config), aes(fill = preds, label = member_group))+
-      geom_sf(data = edges %>% filter(plot_id == plt, configuration == config , preds > 0.3), 
+      geom_sf(data = edges %>% filter(plot_id == plt, configuration == config, is_max == 1, member_group != pred_group),
               aes(alpha = preds), 
-              arrow = arrow(type = "closed", length = unit(0.1, "inches")))+
+              arrow = arrow(type = "closed", length = unit(0.075, "inches")))+
       geom_sf(data = grid %>% filter(configuration == config), fill = "transparent")+
       geom_sf(data = inocs %>% filter(plot_inoc_id == plt), size = 2, shape = 23, fill = "#F8766D") +
       facet_wrap(~visit, nrow = 1)+
       theme(legend.position = "bottom")+
-      scale_alpha_continuous(limits = c(0.3, 1))+
+      scale_alpha_continuous(limits = c(0, 1))+
       scale_fill_gradientn(colors = self_infection, limits = c(0,1)) + 
       labs(title = paste0("Spatial Network Predictions (", config_type, ", ", plt, ")"),
            fill = "Self Infection",
@@ -219,4 +298,6 @@ for (config in unique(edges$configuration)) {
     ggsave(filename = paste0(config, "_", plt, "_preds.png"), path = here("DataProcessed/results/figures/spatial_network_preds/"), width = 8, height = 8)
   }
 }
+
+
 

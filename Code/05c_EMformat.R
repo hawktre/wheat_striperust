@@ -28,7 +28,7 @@ library(sf)
 clusters <- readRDS(here("DataProcessed/experimental/clusters.rds"))
 forward <- readRDS(here("DataProcessed/results/all_fits_hurdle_logistic.rds"))
 wind <- readRDS(here("DataProcessed/wind/wind_clean.rds"))
-
+forward_data <- readRDS("DataProcessed/experimental/mod_dat.rds")
 
 source(here("Code/01a_DataFormat_Fun.R"))
 
@@ -96,8 +96,11 @@ for (grid_type in names(clusters)) {
                              dir.mat = dist_dir$dir,
                              wind = wind)
     
+    #Forward model inits
+    og_inits <- forward_data[[cur.plot]][[cur.visit]][["theta_init"]]
+    
     #Forward model estimates
-    inits <- forward[["free"]][[plt_visit]][["theta"]][[1]]
+    mle_inits <- forward[["free"]][[plt_visit]][["theta"]][[1]]
     
     mod_dat[[cur.plot]][[cur.visit]] <- list("y_prev" = y_prev,
                                              "y_cur" = y_cur,
@@ -107,7 +110,8 @@ for (grid_type in names(clusters)) {
                                              "dist_mat" = dist_dir$dist,
                                              "dir_mat" = dist_dir$dir,
                                              "wind_mat" = wind_mat,
-                                             "inits" = inits)
+                                             "og_inits" = og_inits,
+                                             "inits" = mle_inits)
   }
   
   em_dat[[grid_type]] <- mod_dat
