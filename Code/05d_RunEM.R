@@ -43,7 +43,7 @@ for (config in names(em_dat)) {
       
       ## set up Parameters
       max_em_iter <- 1000
-      tol <- 1e-6
+      tol <- 1e-8
       theta <- dat$inits
       q_track <- numeric(max_em_iter)
       theta_track <- list()
@@ -135,7 +135,8 @@ for (inits in 1:init.length){
   for (config in names(em_dat)){
     for(plt in names(em_dat[[config]])){
       for(visit in names(em_dat[[config]][[plt]])){
-        cat("Config:", config, "Plot:", plt, "Visit:", visit)
+        
+        cat("Config:", config, "Plot:", plt, "Visit:", visit, "Kappa:", inits)
         dat <- em_dat[[config]][[plt]][[visit]]
         n_groups <- length(unique(dat$group_id))
         
@@ -144,7 +145,7 @@ for (inits in 1:init.length){
         
         ## set up Parameters
         max_em_iter <- 1000
-        tol <- 1e-6
+        tol <- 1e-8
         theta <- dat[["og_inits"]][[inits]]
         kappa_try <- theta[["kappa"]]
         q_track <- numeric(max_em_iter)

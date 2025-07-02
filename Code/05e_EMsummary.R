@@ -32,6 +32,7 @@ library(sf)
 
 em_data <- readRDS(here("DataProcessed/experimental/em_dat.rds"))
 em_summary <- readRDS(here("DataProcessed/results/backwards_all_fits.rds"))
+em_sensitivity <- readRDS(here("DataProcessed/results/backwards_sensitivity_fits.rds"))
 clusters <- readRDS(here("DataProcessed/experimental/clusters.rds"))
 inocs <- readRDS(here("DataProcessed/experimental/inoc_sp.rds"))
 
@@ -47,11 +48,58 @@ fit_df <- imap_dfr(em_summary, function(plots, config_name) {
         visit = parse_number(visit),
         em_iters = visit_result$em_iters,
         converged = visit_result$converged,
-        final_neg_loglik = visit_result$final_neg_loglik
+        final_neg_loglik = visit_result$final_neg_loglik, 
+        !!!visit_result$final_theta
       )
     })
   })
 })
+
+params_optim_long <- fit_df %>% 
+  select(configuration, plot_id, visit, final_neg_loglik, beta, delta, gamma, kappa, phi) %>% 
+  pivot_longer(beta:phi, names_to = "param", values_to = "value")
+
+fit_sensitivity <- imap_dfr(em_sensitivity, function(plots, config_name) {
+  imap_dfr(plots, function(visits, plot_id) {
+    imap_dfr(visits, function(inits, visit) {
+      imap_dfr(inits, function(visit_result, init_id) {
+        tibble(
+          configuration = config_name,
+          plot_id = plot_id,
+          visit = parse_number(visit),
+          inits = init_id,
+          em_iters = visit_result$em_iters,
+          converged = visit_result$converged,
+          final_neg_loglik = visit_result$final_neg_loglik, 
+          !!!visit_result$final_theta
+        )
+      })
+    })
+  })
+})
+
+params_sensitivity_long <- fit_sensitivity %>% 
+  filter(final_neg_loglik > -1e5) %>% 
+  group_by(configuration, plot_id, visit) %>% 
+  slice_min(final_neg_loglik) %>% 
+  ungroup() %>% 
+  select(configuration, plot_id, visit, inits, final_neg_loglik, beta, delta, gamma, kappa, phi) %>% 
+  pivot_longer(beta:phi, names_to = "param", values_to = "value") %>% 
+  left_join(params_optim_long, 
+            by = c("configuration", "plot_id", "visit", "param"),
+            suffix = c(".sensitivity", ".optim")) %>% 
+  mutate(p_diff = ((value.sensitivity - value.optim)/value.optim)* 100)
+  
+
+params_sensitivity_long %>%
+  filter(configuration == "stripe_4", str_detect(plot_id, "C")) %>%
+  ggplot(aes(x = value.optim, y = value.sensitivity)) +
+  geom_point(aes(color = param), size = 3)+
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed")+
+  facet_grid(plot_id~visit) + 
+  theme_bw()
+
+hist(fit_sensitivity$kappa)
 
 ## Compute BIC
 best_mod <- fit_df %>% 
