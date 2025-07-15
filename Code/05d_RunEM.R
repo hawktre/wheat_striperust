@@ -123,7 +123,7 @@ for (config in names(em_dat)) {
   }
 }
 
-saveRDS(em_summary, file = "DataProcessed/results/backwards_all_fits.rds")
+saveRDS(em_summary, file = "DataProcessed/results/backward_model/backwards_mle_fits.rds")
 
 
 
@@ -227,5 +227,5 @@ for (inits in 1:init.length){
   }
 }
 
-saveRDS(em_sensitivity, file = "DataProcessed/results/backwards_sensitivity_fits.rds")
+saveRDS(em_sensitivity, file = "DataProcessed/results/backward_model/backwards_sensitivity_fits.rds")
 

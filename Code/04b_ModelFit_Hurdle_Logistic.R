@@ -97,7 +97,7 @@ for (plot_id in names(mod_dat)) {
           wind_matrix = dat$wind_mat[non_zero, non_zero],
           dist_matrix = dat$dist_mat[non_zero, non_zero]
         ),
-        silent = FALSE  # <-- This prints the error
+        silent = FALSE  
       )
       
       if (!inherits(fit, "try-error")) {
@@ -200,5 +200,5 @@ for (gamma_max in gamma_max_vals) {
 }
 
 all_fits <- list("free" = free_fits, "constrained" = constrained_fits)
-saveRDS(all_fits, here("DataProcessed/results/all_fits_hurdle_logistic.rds"))
+saveRDS(all_fits, here("DataProcessed/results/forward_model/all_fits_hurdle_logistic.rds"))
 

@@ -19,6 +19,7 @@ author:
   - name: Shirshendu Chatterjee
     affiliations:
       - ref: nyu
+    degrees: PhD
   - name: Sharmodeep Bhattacharyya
     affiliations:
       - ref: osu
@@ -63,7 +64,7 @@ In the previous report, 05a_SourceDetection_ModelConsiderations, we introduced a
 
 # Methods
 
-We have extensively documented exploratory analyses and model derivations in previous reports (above). Here, we briefly highlight those aspects of experimental design and model development which are essential to interpreting source-detection results.
+We have extensively documented exploratory analyses and model derivations in previous reports. Here, we briefly highlight those aspects of experimental design and model development which are essential to interpreting source-detection results.
 
 ## Experimental Design
 
@@ -116,7 +117,6 @@ Note that this new modeling framework requires a prior on the number of sources 
 #| fig-align: center
 #| fig-cap: "Schematics for each of the four grouping strategies considered in this study; corresponding to 16, 8, and 4 plants per source group from left to right."
 #| fig-width: 8
-#| cache: true
 
 library(tidyverse)
 library(here)
@@ -124,19 +124,11 @@ library(sf)
 
 clusters <- readRDS(here("DataProcessed/experimental/clusters.rds"))
 
-plant_clust <- bind_rows(clusters$stripe_4$stripe_assigned %>% mutate,
-                         clusters$stripe_8h$stripe_assigned,
-                         clusters$stripe_8v$stripe_assigned,
-                         clusters$stripe_16$stripe_assigned)
-
 grid <- bind_rows(clusters$stripe_4$grid,
                   clusters$stripe_8h$grid,
                   clusters$stripe_8v$grid,
                   clusters$stripe_16$grid)
 
-plant_clust_sp <- plant_clust %>% 
-  select(grid_id, grid_type, geometry) %>% 
-  distinct()
 
 grid %>% 
   ggplot()+
@@ -155,15 +147,16 @@ $$ {#eq-meanmod2}
 
 Initial parameter values were provided as the optimized maximum likelihood estimates (MLEs) from the 'forward' model. Like the forward model, only non-zero observations at each time transition are used to optimize the parameter vector $\hat{\boldsymbol\theta}_t$. Finally, BIC was used to select the best prior number of sources.
 
-## Interpretation
+## Prediction
 
 The EM algorithm produces an $N \times S$ matrix for each time transition $t$ and each replicate $b$, $\hat{\boldsymbol p}$, where each entry $\hat p_{is}$ represents the posterior probability that plant $i$ was infected by source group $s$. To make results more interpretable, we can average over the groups as
 
 $$
 \bar{\boldsymbol{p}} = \frac{1}{|G_s|}\sum_{i \in G_s} p_{is}
-$$ This is a matrix of size $S \times S$ where diagonal entries represent the probability of self-infection (within-group spread), while off-diagonal entries represent the probability of cross-group infection.
+$$ 
 
-## Prediction
+This is a matrix of size $S \times S$ where diagonal entries represent the probability of self-infection (within-group spread), while off-diagonal entries represent the probability of cross-group infection.
+
 
 In the experimental treatment with a single true inoculation point, we use the estimated group-level probability matrix $\bar{\boldsymbol p}$ to predict the most likely source group of infection at each replicate-transition combination. Ignoring indices for replicate and transition, we can define the most probable source of infection for each group
 
@@ -171,7 +164,25 @@ $$
 \hat s = \text{argmax} \ \bar{\boldsymbol p}
 $$
 
-There will be $B \times T$ of these predictions, which we can use to compute a standard suite of multiclass prediction metrics such as accuracy, F-1 score, or Cohen's Kappa. We can additionally look at the these metrics at cross-sections of replicates or transitions to to learn if and where our model performs poorly.
+There will be $B \times T$ of these predictions. If we define the *true* source as the one containing the inoculation point (in the applicable treatment level), we can use our predictions to compute a standard suite of multiclass prediction metrics such as accuracy, F-1 score, or Cohen's Kappa. Note, however, that the inoculation point sometimes lies near the border of two spatial groups. Traditional mutliclass metrics are produced from confusion matrices, where a *correct* prediction only occurs when the predicted class label matches the true class label. In this case, this approach may not produce a realistic, interpretable metric. To counter that, we propose a distance-weighted accuracy. Let $d_{\text{pred}}$ denote the distance from the centroid of the predicted source to the centroid of the true source and $d_{\text{max}}$ be the distance of the furthest centroid from the true source. Define the score for an individual prediction as
+
+$$
+\text{score}_i = 1 - \frac{d_{\text{pred}}}{d_{\text{max}}}
+$$
+When we have $N$ predictions, the distance-weighted accuracy is then given by 
+
+$$
+\frac{1}{N}\sum_{i = 1}^N \text{score}_i
+$$
+This will provide a more realistic interpretation of model accuracy, particularly in configurations with finer grids (e.g. 2x4, 4x2, 4x4). 
+
+## Sensitivity Analysis
+It is well understood that EM-style algorithms can be highly sensitive to different parameter initializations. To assess the sensitivity of our algorithm, we considered two intialization options. 
+
+  1. **Informed:** Initialize the EM-algorithm with the optimized MLEs from the forward model. 
+  2. **Naive:** Initialize the EM-algorithm using the grid-search technique employed to optimize the forward model. 
+  
+We then compare the parameter estimates and predictions for both initialization strategies. For more on the Naive initialization procedure, please see '00a_ModelingConsiderations'.
 
 # Results
 
@@ -180,35 +191,21 @@ library(tidyverse)
 library(here)
 library(sf)
 
-em_data <- readRDS(here("DataProcessed/experimental/em_dat.rds"))
-em_summary <- readRDS(here("DataProcessed/results/backwards_all_fits.rds"))
+mle_results <- readRDS(here("DataProcessed/results/backward_model/mle_results.rds"))
 clusters <- readRDS(here("DataProcessed/experimental/clusters.rds"))
 inocs <- readRDS(here("DataProcessed/experimental/inoc_sp.rds"))
 
 
 # Model selection ---------------------------------------------------------
-## Extract Model fit metrics
-fit_df <- imap_dfr(em_summary, function(plots, config_name) {
-  imap_dfr(plots, function(visits, plot_id) {
-    imap_dfr(visits, function(visit_result, visit) {
-      tibble(
-        configuration = config_name,
-        plot_id = plot_id,
-        visit = parse_number(visit),
-        em_iters = visit_result$em_iters,
-        converged = visit_result$converged,
-        final_neg_loglik = visit_result$final_neg_loglik
-      )
-    })
-  })
-})
-
 ## Compute BIC
-fit_df <- fit_df %>% 
+fit_df <- mle_results$params %>% 
+  select(-c(param, value)) %>% 
+  distinct() %>% 
   mutate(n_mix = parse_number(configuration),
          bic_k = (n_mix - 1 + 5),
          bic = bic_k * log(64) - 2 * log(abs(final_neg_loglik)))
 
+## Subset the best models
 best_mod <- fit_df %>%
   group_by(plot_id, visit) %>%
   slice_min(order_by = bic, n = 1, with_ties = FALSE) %>%
@@ -218,57 +215,24 @@ best_mod <- fit_df %>%
                                 labels = c("2 x 2", "2 x 4", "4 x 2", "4 x 4")))
 ```
 
-EM runs converged quickly for every treatment-replicate-time combination (min = `r min(fit_df$em_iters)` iters, max = `r max(fit_df$em_iters)` iters), and the $2 \times 2$ configuration (4 source groups) almost always achieved the lowest BIC. The result is somewhat expected as BIC penalizes heavily for the addition of mixture components.
+EM runs converged quickly for every treatment-replicate-visit combination (min = `r min(fit_df$em_iters)` iters, max = `r max(fit_df$em_iters)` iters), and the $2 \times 2$ configuration (4 source groups) almost always achieved the lowest BIC, with the exception of B4 - Visits 3 and 4, and D2-Visit 4. The result is somewhat expected as BIC penalizes heavily for the addition of mixture components. Quick convergence suggests the models ability to scale well, computationally. 
 
-It is perhaps easiest to interpret model predictions in the true spatial nature
+## Single-Source Detection
+
+It is perhaps most practical to work with the scenarios in which there is a single inoculation point and true source group. Specifically, we can test our ability to predict the origin of the disease outbreak at each discrete time transition. It is easiest to conceptualize these predictions spatially as in @fig-2by2
 
 ```{r}
-#| label: fig-C4by4
+#| label: fig-2by2
 #| layout-ncol: 1
-#| fig-cap-location: top
-#| fig-cap: "Spatial visualization of predicted infection probabilities for replicate Block C with four possible source groups. Nodes indicate the probability of self-infection, while arrows indicate the probability of infection from another source. Directional edges are only displayed for the most probable source (if different from itself), with transparency encoding the weight $(\\hat p)$."
+#| fig-cap: "Spatial visualization of predicted infection probabilities for all replicate blocks with a single inoculation point and four possible source groups. Nodes indicate the probability of self-infection, while arrows indicate the probability of infection from another source. Directional edges are only displayed for the most probable source (if different from itself), with transparency encoding the weight $(\\hat p)$."
 #| fig-subcap: 
-#| - "Single inoculation point."
-#| - "Two inoculation points."
-#| - "Four inoculation points."
+#| - "Block A"
+#| - "Block B"
+#| - "Block C"
+#| - "Block D"
 #| lightbox: 
-#|   group: BlockC
-# Get posterior summary matrix
-posterior_summaries <- imap_dfr(em_summary, function(plots, config_name) {
-  imap_dfr(plots, function(visits, plot_id) {
-    imap_dfr(visits, function(visit_info, visit_name) {
-      # Get p_mat
-      p_mat <- visit_info$p_mat
-      if (is.null(p_mat)) return(NULL)
-      
-      # Get group_id from corresponding em_data object
-      group_id <- em_data[[config_name]][[plot_id]][[visit_name]]$group_id
-      if (is.null(group_id)) return(NULL)
-      
-      # Make data frame
-      df <- as.data.frame(p_mat)
-      colnames(df) <- paste0("p_group", seq_len(ncol(df)))
-      df$group_id <- group_id
-      
-      # Summarize posterior probabilities by group
-      df %>%
-        group_by(group_id) %>%
-        summarise(across(starts_with("p_group"), mean, .names = "mean_{.col}"),
-                  .groups = "drop") %>%
-        mutate(configuration = config_name,
-               plot_id = plot_id,
-               visit = visit_name)
-    })
-  })
-})
+#|   group: single2by2
 
-# Arrange for plotting
-posterior_summaries_long <- posterior_summaries %>%
-  select(configuration, plot_id, visit, everything()) %>% 
-  pivot_longer(cols = contains("mean"), names_to = "pred_group", values_to = "preds") %>% 
-  drop_na(preds) %>% 
-  rename("member_group" = "group_id") %>% 
-  mutate(pred_group = parse_number(pred_group))
 
 #Create single spatial grid object
 grid <- bind_rows(clusters$stripe_4$grid,
@@ -292,39 +256,16 @@ centroid <- bind_rows(clusters$stripe_4$centroid,
                    grid_type == "4 x 4" ~ "stripe_16")) %>% 
   rename("geometry" = ".")
 
-# self-infection probablities
-nodes <- posterior_summaries_long %>% 
-  filter(member_group == pred_group) %>%
-  left_join(centroid, by = c("member_group" = "grid_id", "configuration")) %>% 
-  select(plot_id, visit, configuration, member_group, preds, geometry) %>% 
-  st_as_sf()
-
-# cross-infection probabilities 
-edges <- posterior_summaries_long %>% 
-  left_join(centroid, by = c("pred_group" = "grid_id", "configuration")) %>% 
-  rename(from_geometry = "geometry") %>% 
-  left_join(centroid, by = c("member_group" = "grid_id", "configuration")) %>% 
-  rename(to_geometry = "geometry") %>% 
-  select(plot_id, visit, configuration, preds, member_group, pred_group, to_geometry, from_geometry) %>% 
-  rowwise() %>%
-  mutate(geometry = st_sfc(st_linestring(rbind(st_coordinates(from_geometry),
-                                               st_coordinates(to_geometry))),
-                           crs = st_crs(from_geometry))) %>%
-  ungroup() %>% 
-  select(-c(to_geometry, from_geometry)) %>% 
-  st_as_sf() %>% 
-  group_by(configuration, plot_id, visit, member_group) %>% 
-  mutate(is_max = if_else(preds == max(preds), 1, 0)) %>% 
-  slice_max(preds) %>% 
-  ungroup()
 
 #Plot it
 library(wesanderson)
-
 self_infection <- wes_palette("Zissou1", 7, type = "continuous")
 
 config_match <- data.frame(name = c("stripe_4", "stripe_8h", "stripe_8v", "stripe_16"),
                            config = c("2 x 2", "2 x 4", "4 x 2", "4 x 4"))
+
+nodes <- mle_results$preds$nodes
+edges <- mle_results$preds$edges
 
 spat_plots <- list()
 
@@ -353,193 +294,247 @@ for (config in unique(edges$configuration)) {
   }
 }
 
+spat_plots[["A1_stripe_4"]]
+spat_plots[["B1_stripe_4"]]
 spat_plots[["C1_stripe_4"]]
-spat_plots[["C2_stripe_4"]]
-spat_plots[["C4_stripe_4"]]
+spat_plots[["D1_stripe_4"]]
 ```
 
-```{r}
-# Make ground truth for prediction ----------------------------------------
-single_inocs <- inocs %>%
-  filter(str_detect(plot_inoc_id, "1"))
-
-grid_truth <- grid %>% select(configuration, grid_id) 
-
-for (plt in single_inocs$plot_inoc_id) {
-  tmp <- single_inocs %>% filter(plot_inoc_id == plt)
-  
-  grid_truth[plt] <- as.numeric(lengths(st_contains(grid_truth, tmp)) > 0)
-}
-
-ground_truth <- grid_truth %>%
-  pivot_longer(cols = A1:D1, names_to = "plot_id") %>% 
-  filter(value == 1) %>% 
-  select(configuration, plot_id, grid_id, value, geometry) %>% 
-  arrange(plot_id)
-
-
-
-prediction_df <- posterior_summaries_long %>% 
-  filter(str_detect(plot_id, "1")) %>% 
-  group_by(plot_id, configuration, visit) %>% 
-  filter(preds == max(preds)) %>% 
-  ungroup() %>% 
-  select(configuration, plot_id, visit, pred_group) %>% 
-  left_join(ground_truth, by = c("configuration", "plot_id")) %>% 
-  rename("true_group" = grid_id) %>% 
-  st_drop_geometry() %>% 
-  select(-c(value, geometry))
-  
-
-pred_4   <- prediction_df %>% filter(configuration == "stripe_4") %>% mutate(across(c(true_group, pred_group), ~ factor(.x, levels = 1:4)))
-pred_8h   <- prediction_df %>% filter(configuration == "stripe_8h")%>% mutate(across(c(true_group, pred_group), ~ factor(.x, levels = 1:8)))
-pred_8v  <- prediction_df %>% filter(configuration == "stripe_8v")%>% mutate(across(c(true_group, pred_group), ~ factor(.x, levels = 1:8)))
-pred_16  <- prediction_df %>% filter(configuration == "stripe_16")%>% mutate(across(c(true_group, pred_group), ~ factor(.x, levels = 1:16)))
-
-library(tidymodels)
-multi_metrics <- metric_set(accuracy, kap, f_meas)
-
-metrics_config <- list(
-  stripe_4  = pred_4,
-  stripe_8h = pred_8h,
-  stripe_8v = pred_8v,
-  stripe_16 = pred_16
-) |> 
-  purrr::imap_dfr(~ multi_metrics(.x, truth = true_group, estimate = pred_group) |> 
-                    mutate(configuration = .y), .id = NULL)
-
-metrics_config_plot <- list(
-  stripe_4  = pred_4,
-  stripe_8h = pred_8h,
-  stripe_8v = pred_8v,
-  stripe_16 = pred_16
-) |> 
-  purrr::imap_dfr(~ .x %>%
-                    group_by(plot_id) %>%
-                    multi_metrics(truth = true_group, estimate = pred_group) %>%
-                    mutate(configuration = .y),
-                  .id = NULL)
-
-metrics_config_visit <- list(
-  stripe_4  = pred_4,
-  stripe_8h = pred_8h,
-  stripe_8v = pred_8v,
-  stripe_16 = pred_16
-) |> 
-  purrr::imap_dfr(~ .x %>%
-                    group_by(visit) %>%
-                    multi_metrics(truth = true_group, estimate = pred_group) %>%
-                    mutate(configuration = .y),
-                  .id = NULL)
-
-acc_4 <- metrics_config %>% filter(.metric == "accuracy", configuration == "stripe_4") %>% .$.estimate
-f1_4 <- metrics_config %>% filter(.metric == "f_meas", configuration == "stripe_4") %>% .$.estimate
-```
-
-What we observe from @fig-C4by4 is the consistent ability of the model to identify sources of infection through the **self-infection** probabilities. The model is also able to discern cross-infection probabilities well in the case that there is a strong signal from a single source (e.g. multiple inoculations fall within a single source group). Only block C is shown in the pictures above for brevity; however, we can compute prediction metrics such as accuracy or F-score in the case that we only have a single inoculation point. Recall that $F_1$ score (harmonic mean) is computed as
-
-$$
-F_1 = 2 \cdot \frac{\text{precision} \cdot \text{recall}}{\text{precision} + \text{recall}}
-$$ For the $4 \times 4$ configuration, the model achieved an accuracy of `r round(acc_4, 3)` and an $F_1$-score of `r round(f1_4, 3)`. Although BIC selected the $4 \times 4$ configuration as the best-fitting model, we may still want to investigate its predictive ability at finer scales.
+What we observe from @fig-2by2 is the consistent ability of the model to identify sources of infection through the **self-infection** probabilities. That is, the nodes of the true source group often display warm colors-- indicating a high probability of self-infection. It is worth noting that the model may also capture latent disease dynamics, which could lead to an incorrect prediction by our definition--in which the true source group is the one containing the inoculation point. We may also wish to look at our ability to predict at a finer scale. Here, we show spatial predictions for the $4 \times 4$ grid, but remaining plots can be found in the appendix. 
 
 ```{r}
-#| label: fig-Cother
+#| label: fig-4by4
 #| layout-ncol: 1
-#| fig-cap-location: top
-#| fig-cap: "Spatial visualization of predicted infection probabilities for replicate Block C with eight or sixteen possible source groups. Nodes indicate the probability of self-infection, while arrows indicate the probability of infection from another source. Directional edges are only displayed for the most probable source (if different from itself), with transparency encoding the weight $(\\hat p)$."
-#| fig-subcap: 
-#| - "Eight possible source groups positioned horizontally."
-#| - "Eight possible source groups positioned vertically."
-#| - "Sixteen possible source groups."
-#| lightbox: 
-#|   group: BlockC-other
-acc_8h <- metrics_config %>% filter(.metric == "accuracy", configuration == "stripe_8h") %>% .$.estimate
-acc_8v <- metrics_config %>% filter(.metric == "accuracy", configuration == "stripe_8v") %>% .$.estimate
-acc_16 <- metrics_config %>% filter(.metric == "accuracy", configuration == "stripe_16") %>% .$.estimate
-
-spat_plots[["C1_stripe_8h"]]
-spat_plots[["C1_stripe_8v"]]
-spat_plots[["C1_stripe_16"]]
-```
-
-@fig-Cother gives a spatial visualization of predictions with eight or sixteen possible source groups. Here, we see that the model may be able to distinguish the correct source group at earlier visits, but finds other sources to be more probable for self-infection as the plot becomes saturated with the disease. The configuration with eight horizontally-oriented source groups achieved an overall accuracy of `r round(acc_8h, 3)`; eight vertically-oriented source groups an accuracy of `r round(acc_8v, 3)`; and sixteen source groups an accuracy of `r round(acc_16, 3)`. Spatially, we can see that the most probable source group is often neighboring the true source group. Some other replicates showed better success on a finer grid (@fig-config16).
-
-```{r}
-#| label: fig-config16
-#| layout-ncol: 1
-#| fig-cap-location: top
-#| fig-cap: "Spatial visualization of predicted infection probabilities for all replicate blocks with sixteen possible source groups. Nodes indicate the probability of self-infection, while arrows indicate the probability of infection from another source. Directional edges are only displayed for the most probable source (if different from itself), with transparency encoding the weight $(\\hat p)$."
+#| fig-cap: "Spatial visualization of predicted infection probabilities for all replicate blocks with a single inoculation point and sixteen possible source groups. Nodes indicate the probability of self-infection, while arrows indicate the probability of infection from another source. Directional edges are only displayed for the most probable source (if different from itself), with transparency encoding the weight $(\\hat p)$."
 #| fig-subcap: 
 #| - "Block A"
 #| - "Block B"
 #| - "Block C"
 #| - "Block D"
 #| lightbox: 
-#|   group: config16
+#|   group: single4by4
+
 spat_plots[["A1_stripe_16"]]
 spat_plots[["B1_stripe_16"]]
 spat_plots[["C1_stripe_16"]]
 spat_plots[["D1_stripe_16"]]
 ```
+Similarly to @fig-2by2, we see the models generalized ability to identify a single true source in @fig-4by4. That is, the model predicts a high probability of self-infection either at the true source or at a neighbor to the true source. This finding highlights the need for a distance-weighted accuracy metric which can account for spatial error. We can see that it is more likely that the single inoculation point falls on or near a border as we consider source groups with smaller areas. Again, we can perhaps also see some latent disease dynamics at play through cross-infection probabilities (gray arrows). As the disease spreads across the plot, it may become more probable that groups are infected by groups other than the group containing the epidemic origin. 
 
-Overall, we conclude that our model shows meaningful success in its ability to detect a single source in this experimental setting. More work is needed to assess the models ability to detect multiple sources. Primarily, we must investigate how we evaluate the models classification abilities in a multiclass setting when there is more than one correct class.
+
+```{r}
+#| warning: false
+#| label: tbl-predmets
+#| tbl-cap: "Prediction metrics for each grouping configuration, when there is a single true disease source (e.g. Treatment Level = 1)."
+
+library(tidymodels)
+library(kableExtra)
+
+# Summarise distance-weighted accuracy
+dist_acc_mle <- bind_rows(mle_results$singlesource_acc) %>% 
+  group_by(configuration) %>% 
+  summarise(dist_acc = mean(dist_acc), .groups = "drop")
+
+#Compute other prediction metrics
+multi_metrics <- metric_set(accuracy, kap, f_meas)
+
+mle_metrics <- mle_results$singlesource_acc %>% 
+  imap_dfr(~ multi_metrics(.x, truth = true_group, estimate = pred_group, ) %>% 
+                    mutate(configuration = .y), .id = NULL) 
+
+# Join with distance-weighted acc
+mle_metrics <- left_join(mle_metrics, dist_acc_mle, by = "configuration")%>% 
+  select(-.estimator) %>% 
+  pivot_wider(names_from = .metric, values_from = .estimate)
+
+ # Create the table 
+mle_metrics %>% as.data.frame() %>% 
+  mutate(configuration = c("2 x 2", "2 x 4", "4 x 2", "4 x 4")) %>% 
+  kable(col.names = c("Configuration", "Accuracy (Distance-Weighted)", "Accuracy (Unweighted)", "Cohen's-Kappa", "$$F_1$$"), digits = 3)
+   
+
+```
+
+Prediction metrics are formalized and displayed in @tbl-predmets. It is clear that a distance-weighted accuracy metric gives a slightly more favorable performance to a larger number of potential source groups ($2 \times 2$, $2 \times 4$, $4 \times 2$), but the $2 \times 2$ configuration displays the best predictive performance. This is outcome is expected--as we are predicting over the largest space when we have the least possible source groups.
+
+## Multi-Source Prediction
+
+More work is needed to derive formal prediction metrics for the multi-source prediction scenarios, but we can still visualize spatial prediction to get a qualitative sense of our model's ability to distinguish multiple disease foci. Let us anecdotally consider two scenarios: one in which multiple foci were placed relatively closely together and formed a contiguous disease wavefront (C4), and another where there are two distinct disease epicenters (B4). 
+
+```{r}
+#| label: fig-multifoci
+#| layout-ncol: 1
+#| fig-cap: "Spatial visualization of predicted infection probabilities a) when multiple foci are relatively close and b) when there are two distinct disease epicenters. Nodes indicate the probability of self-infection, while arrows indicate the probability of infection from another source. Directional edges are only displayed for the most probable source (if different from itself), with transparency encoding the weight $(\\hat p)$."
+#| fig-subcap: 
+#| - "Multiple foci form a contiguous disease wavefront."
+#| - "Multiple foci form two distinct disease epicenters."
+#| lightbox: 
+#|   group: multifoci
+
+spat_plots[["C4_stripe_16"]]
+spat_plots[["B4_stripe_16"]]
+```
+
+Panel (a) of @fig-multifoci demonstrates a scenario in which multiple foci formed a contiguous disease wavefront (we know from the observed data in '00_EDA'), whereas Panel (b) of @fig-multifoci demonstrates a scenario in which we have multiple distinct disease epicenters. Observing the predictions from Panel (a), we see high probabilities of self-infection in some true source groups. In Panel (b), however, we see particularly in visits 3 and 4 that the model predicts equal probability of infection everywhere. Essentially, the model "doesn't know". This is likely due to the fact that the model, in its current form, assumes a single true disease origin. Thus, the assumption of the model is violated in Panel (b). It is interesting, however, that the model clearly has some distinguishing power in Panel (a), visit 5. 
+
+## Sensitivity Analysis
+
+The initialization strategy used above was to pass the optimized MLE estimates from the forward model to the backward model. We may hypothesize that this strategy is responsible for the relatively quick convergence of the backward model above. Here, we also consider a 'naive' initialization procedure, similar to the one used to initialize the forward model. That is, we grid-search for $\kappa$ to linearize the model and use OLS estimates as initial guesses for the remaining parameters. We then select the 'best' model using likelihood-based metrics. Here, we compare computational speed, parameter estimates, and predictive power of these two strategies. 
+
+```{r}
+#| label: fig-emiters
+#| fig-cap: "The distribution of EM-algorithm iterations it took for each of the initialization strategies to converge."
+discrete_cols <- wes_palette("Darjeeling1", n = 5, type = "discrete")
+sensitivity_results <- readRDS(here("DataProcessed/results/backward_model/sensitivity_results.rds"))
+
+sensitivity_iters <- sensitivity_results$params %>% 
+  select(configuration, plot_id, visit, em_iters) %>% 
+  distinct()
+
+mle_iters <- mle_results$params %>% 
+  select(configuration, plot_id, visit, em_iters) %>% 
+  distinct()
+
+left_join(mle_iters, sensitivity_iters, by = c("configuration", "plot_id", "visit"), suffix = c(".MLE", ".Naive")) %>% 
+  pivot_longer(contains("em_iters"), names_to = "init_type", values_to = "em_iters") %>% 
+  mutate(init_type = sapply(init_type, str_split_i, pattern = "\\.", i = 2)) %>% 
+  ggplot(aes(x = em_iters))+
+  geom_histogram(aes(fill = init_type), position = "identity", alpha = 0.7, color = "black")+
+  labs(x = "EM Iterations", y = "Count", fill = "Initialization")+
+  scale_fill_manual(values = discrete_cols)+
+  theme_classic()
+
+```
+@fig-emiters shows that the grid-search (naive) initialization scheme has a slightly higher right skew for the number of EM-iterations until convergence, with some notable outliers. From a practical standpoint--runtimes are similar for the two initialization strategies. We compare parameter estimates in @fig-params. 
+
+```{r}
+#| label: fig-params
+#| fig-cap: "Comparison of parameter values between the two initialization methods for Block C with the $$2 \\times 2$$ configuration. The dashed line denotes equal estimates."
+#| fig-height: 8
+#| fig-width: 10
+
+params_diff <- sensitivity_results$params %>% 
+  left_join(mle_results$param, 
+            by = c("configuration", "plot_id", "visit", "param"),
+            suffix = c(".sensitivity", ".mle")) %>% 
+  mutate(p_diff = ((value.sensitivity - value.mle)/value.mle)* 100)
+
+params_diff %>%
+  filter(configuration == "stripe_4", str_detect(plot_id, "C")) %>%
+  ggplot(aes(x = value.mle, y = value.sensitivity)) +
+  geom_point(aes(color = param), size = 3)+
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed")+
+  facet_grid(plot_id~visit) + 
+  labs(title = "Parameter Comparison (Block C)",
+       color = "Parameter",
+       x = "Informed Estimate",
+       y = "Nieve Estiamte")+
+  theme(legend.position = "bottom")+
+  theme_bw()+
+  scale_color_manual(values = discrete_cols)
+```
+
+There are too many replicate-treatment-visit-configuration combinations to examine all parameter comparisons, but here we see that the model is sensitive to initialization for some combinations. This trend hold true across other fits. We can see from @tbl-initcompare that the grid-search initializaiton scheme also suffers form weaker predictive performance. For that reason, we recommend use of the forward-model MLEs as initializations for the backward model. 
+
+```{r}
+#| warning: false
+#| label: tbl-initcompare
+#| tbl-cap: "Comparison of predictive metrics for the MLE-initizlized (MLE) and grid-search initialized (Sensitivity) optimization techniques for replicates with a single true inoculation point (treatment level = 1) across visits and replicates."
+
+library(gt)
+# Summarise distance-weighted accuracy
+dist_acc_sensitivity <- bind_rows(sensitivity_results$singlesource_acc) %>% 
+  group_by(configuration) %>% 
+  summarise(dist_acc = mean(dist_acc), .groups = "drop")
+
+#Compute other prediction metrics
+sensitivity_metrics <- sensitivity_results$singlesource_acc %>% 
+  imap_dfr(~ multi_metrics(.x, truth = true_group, estimate = pred_group, ) %>% 
+                    mutate(configuration = .y), .id = NULL) 
+
+# Join with distance-weighted acc
+sensitivity_metrics <- left_join(sensitivity_metrics, dist_acc_sensitivity, by = "configuration")%>% 
+  select(-.estimator) %>% 
+  pivot_wider(names_from = .metric, values_from = .estimate)
+
+left_join(mle_metrics, sensitivity_metrics, by = "configuration", suffix = c(".mle", ".sensitivity")) %>%
+  mutate(configuration = c("2 x 2", "2 x 4", "4 x 2", "4 x 4")) %>% 
+  select(configuration, contains("dist_acc"), contains("accuracy"), contains("kap"), contains("f_meas")) %>%
+  gt(rowname_col = "configuration") %>%
+  tab_spanner(
+    label = "Distance-weighted Accuracy",
+    columns = c(dist_acc.mle, dist_acc.sensitivity)
+  ) %>%
+  tab_spanner(
+    label = "Accuracy",
+    columns = c(accuracy.mle, accuracy.sensitivity)
+  ) %>%
+  tab_spanner(
+    label = "Cohen's Kappa",
+    columns = c(kap.mle, kap.sensitivity)
+  ) %>%
+  tab_spanner(
+    label = md("$$F_1$$"),
+    columns = c(f_meas.mle, f_meas.sensitivity)
+  ) %>%
+  cols_label(
+    dist_acc.mle = "Informed",
+    dist_acc.sensitivity = "Naive",
+    accuracy.mle = "Informed",
+    accuracy.sensitivity = "Naive",
+    kap.mle = "Informed",
+    kap.sensitivity = "Naive", 
+    f_meas.mle = "Informed",
+    f_meas.sensitivity = "Naive"
+  ) %>% 
+  fmt_number(decimals = 3)
+  
+```
+
+# Conclusion
+
+In this report, we introduced a source-detection model for the origin of Wheat Stripe Rust in an experimental setting. We assumed a single epidemic origin and an existing forward model that can accurately capture spread of the disease as determined by auto-infection and wind-based disperal vectors. Overall, we conclude that our model shows meaningful success in its ability to detect a single epidemic origin of Wheat Stripe Rust in this experimental setting. It is also possible that some latent disease dynamics are captured by cross-infection probabilities, but more work is needed to validate this claim. It is clear that the model fails when the single-source assumption is violated; however, there may be some distinguishing power between multiple sources which are placed closely together to form a single epidemic wavefront. Finally, we saw that our model is sensitive to initialization strategies. This is a common trait of EM-style algorithms. For that reason, we recommend fitting the forward and backward models separately to achieve the best predictive performance. 
+
+Moving forward, we will assess our models ability to recover the true parameters in a simulation. 
 
 # References
 
 ::: {#refs}
 :::
 
-# Appendix
+# Figure Appendix
 
-## All Figures
+## 2 x 2
 
 ```{r}
-#| lightbox: 
-#|   group: appendix
+possible_2by2 <- names(spat_plots)[str_detect(names(spat_plots), "stripe_4")]
+for (i in possible_2by2) {
+  print(spat_plots[[i]])
+}
+```
+## 2 x 4
 
-for (i in 1:length(spat_plots)) {
+```{r}
+possible_2by4 <- names(spat_plots)[str_detect(names(spat_plots), "stripe_8h")]
+for (i in possible_2by4) {
   print(spat_plots[[i]])
 }
 ```
 
-## Overall predictions
+## 4 x 2
 
 ```{r}
-#| label: tbl-overall
-#| tbl-cap: "Overall prediction metrics by configuration--across visits and replicates. Predictions were only made for a single true inoculation point."
-metrics_config %>% 
-  select(-.estimator) %>% 
-  pivot_wider(names_from = .metric, values_from = .estimate) %>% 
-  mutate(configuration = c("2 x 2", "2 x 4", "4 x 2", "4 x 4")) %>% 
-  rename("Configuration" = configuration,"Accuracy" = accuracy, "Cohen's Kappa" = kap, "F1" = f_meas) %>% 
-  kableExtra::kable(digits = 3) %>% 
-  kableExtra::kable_styling()
+possible_4by2 <- names(spat_plots)[str_detect(names(spat_plots), "stripe_8v")]
+for (i in possible_4by2) {
+  print(spat_plots[[i]])
+}
 ```
 
-## Prediction (Plot Cross-section)
+## 4 x 4
 
 ```{r}
-#| label: tbl-plot
-#| tbl-cap: "Accuracy by configuration and replicate-across visits. Predictions were only made for a single true inoculation point."
-metrics_config_plot %>% 
-  filter(.metric == "accuracy") %>% 
-  select(-.estimator) %>% 
-  pivot_wider(names_from = .metric, values_from = .estimate) %>%  
-  rename("Configuration" = configuration,"Accuracy" = accuracy) %>% 
-  kableExtra::kable(digits = 3) %>% 
-  kableExtra::kable_styling()
-```
-
-## Prediction (Visit Cross-section)
-
-```{r}
-#| label: tbl-visit
-#| tbl-cap: "Accuracy by configuration and visit-across replicates. Predictions were only made for a single true inoculation point."
-metrics_config_visit %>% 
-  filter(.metric == "accuracy") %>% 
-  select(-.estimator) %>% 
-  pivot_wider(names_from = .metric, values_from = .estimate) %>%  
-  rename("Configuration" = configuration,"Accuracy" = accuracy, "Visit" = visit) %>% 
-  kableExtra::kable(digits = 3) %>% 
-  kableExtra::kable_styling()
+possible_4by4 <- names(spat_plots)[str_detect(names(spat_plots), "stripe_16")]
+for (i in possible_4by4) {
+  print(spat_plots[[i]])
+}
 ```
