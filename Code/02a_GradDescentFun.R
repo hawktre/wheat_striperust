@@ -50,63 +50,62 @@ initialize_theta <- function(y_cur, y_prev, wind_mat, dist_mat, d_0, kappa_try) 
   
   #Construct the design matrix
   X1 <- y_prev
+  
   # Get dispersal component and construct design matrix
-  X2 <- map(kappa_try, ~kappa_inner_sum(
-    y_prev = y_prev,   # or provide fixed values
-    wind_matrix = wind_mat,
-    dist_matrix = dist_mat,
-    d0 = d_0,
-    derivative = FALSE,
-    kappa = .x
-  ))
+  X2 <- kappa_inner_sum(y_prev = y_prev, 
+                        wind_matrix = wind_mat,
+                        dist_matrix = dist_mat,
+                        d0 = d_0,
+                        derivative = FALSE,
+                        kappa = kappa_try
+  )
   
-  X_mat <- map(X2, ~cbind(X1 = X1, X2 = .x))
+  mod_df <- data.frame(y = logit(y_cur + 1e-3),
+                       X1 = X1,
+                       X2 = X2)
   
-  logit_y <- logit(y_cur + 1e-3)
-  fits <- map(X_mat, ~ lm(logit_y ~ ., data = as.data.frame(.x)))
   
-  phi <- map(fits, function(fit) {
+  fit <- lm(y~X1 + X2, data = mod_df)
+  
     
-    #total samples
-    n <- length(y_prev)
-    
-    # degrees of freedom
-    df <- n - length(coef(fit)) + 1
-    
-    # predicted values 
-    mu <- inv_logit(fitted(fit))
-    
-    #SSR of model fit
-    ssr <- sum(resid(fit)^2)
-    
-    #Weight for residual variance
-    g_prime <- 1/(mu * (1-mu))
-    
-    #denominator for sigma
-    denom <- df*(g_prime^2)
-    
-    #compute sigma_hat
-    sigma_hat <- ssr/denom
-    
-    #return phi
-    mean((mu*(1-mu))/sigma_hat) - 1
-  })
+  #total samples
+  n <- length(y_prev)
+  
+  # degrees of freedom
+  df <- n - length(coef(fit)) + 1
+  
+  # predicted values 
+  mu <- inv_logit(fitted(fit))
+  
+  #SSR of model fit
+  ssr <- sum(resid(fit)^2)
+  
+  #Weight for residual variance
+  g_prime <- 1/(mu * (1-mu))
+  
+  #denominator for sigma
+  denom <- df*(g_prime^2)
+  
+  #compute sigma_hat
+  sigma_hat <- ssr/denom
+  
+  #return phi
+  phi <- mean((mu*(1-mu))/sigma_hat) - 1
   
   # Extract coefficients
-  coefs <- map(fits, coef)
+  coef_vec <- coef(fit)
   
   # Compose result as list of named vectors
-  theta_list <- pmap(list(coefs, kappa_try, phi), function(coef_vec, kappa_val, phi_val) {
-    c(
-      beta  = coef_vec[["(Intercept)"]],
-      delta = coef_vec[["X1"]],
-      gamma = coef_vec[["X2"]],
-      kappa = kappa_val,
-      phi   = phi_val
-    )
-  })
+  theta <- c(
+    beta  = coef_vec[["(Intercept)"]],
+    delta = coef_vec[["X1"]],
+    gamma = coef_vec[["X2"]],
+    kappa = kappa_try,
+    phi   = phi
+  )
+ 
   
-  return(theta_list)
+  return(theta)
   
 }
 # --- function for log-likelihood ---
@@ -177,3 +176,8 @@ neg_grad <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01
   # Return negative gradients
   -c(beta = d_beta, delta = d_delta, gamma = d_gamma, kappa = d_kappa, phi = d_phi)
 }
+
+
+# Compute Fitted Values ---------------------------------------------------
+
+

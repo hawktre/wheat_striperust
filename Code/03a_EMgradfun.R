@@ -16,7 +16,7 @@ logit <- function(p) log(p / (1 - p))
 inv_logit <- function(x) 1 / (1 + exp(-x))
 
 # Compute Likelihood ---------------------------------------------------------
-lik_beta <- function(y, mu_mat, phi, sum = TRUE, log = TRUE) {
+lik_beta_backward <- function(y, mu_mat, phi, sum = TRUE, log = TRUE) {
 
   y <- matrix(y, nrow = nrow(mu_mat), ncol = ncol(mu_mat))  
   phi <- matrix(phi, nrow = nrow(mu_mat), ncol = ncol(mu_mat))  
@@ -45,7 +45,7 @@ Q_fun <- function(y, mu_mat, phi, p_mat) {
   
   S <- ncol(mu_mat)
   #Compute weighted likelihood matrix
-  lik_mat <- (1-pi) * lik_beta(y, mu_mat, phi, sum = F, log = F) #When y > 0
+  lik_mat <- (1-pi) * lik_beta_backward(y, mu_mat, phi, sum = F, log = F) #When y > 0
   
   if(!is.null(zero_idx)){
   lik_mat[zero_idx, 1:S] <- pi #when y == 0
@@ -71,7 +71,7 @@ wrapped_obj <- function(par, y_current, y_prev, wind_matrix, dist_matrix, group_
 
 
 # Dispersal function ------------------------------------------------------
-kappa_inner_sum <- function(y_prev, wind_matrix, dist_matrix, d0, kappa, 
+kappa_inner_sum_backward <- function(y_prev, wind_matrix, dist_matrix, d0, kappa, 
                             derivative = FALSE, group_id) {
   n <- length(y_prev)
   groups <- sort(unique(group_id))
@@ -115,7 +115,7 @@ get_mu <- function(par, y_prev, wind_matrix, dist_matrix, d0 = 0.01, group_id) {
   
   #Compute Covariates
   ## Dispersal 
-  dispersal <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa, group_id = group_id)
+  dispersal <- kappa_inner_sum_backward(y_prev, wind_matrix, dist_matrix, d0, kappa, group_id = group_id)
   
   n <- length(y_prev)
   S <- ncol(dispersal)
@@ -153,7 +153,7 @@ e_step <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01, 
   zero_idx <- which(y_current == 0)
   
   # Initialize weighted likelihood matrix
-  wl_mat <- prior * (1-pi) * lik_beta(y_current, mu_mat, par[['phi']], sum = F, log = F)
+  wl_mat <- prior * (1-pi) * lik_beta_backward(y_current, mu_mat, par[['phi']], sum = F, log = F)
   wl_mat[zero_idx, 1:S] <- prior*pi 
   
   #Compute posterior probabilities
@@ -183,8 +183,8 @@ mstep_grad_em <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 =
   
   # Create model matrices for each term (n x S)
   y_prev_term <- outer(y_prev * (1 - y_prev), rep(1, ncol(mu_mat)))
-  dispersal_term <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa, group_id = group_id)
-  dispersal_term_deriv <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa, derivative = TRUE, group_id = group_id)
+  dispersal_term <- kappa_inner_sum_backward(y_prev, wind_matrix, dist_matrix, d0, kappa, group_id = group_id)
+  dispersal_term_deriv <- kappa_inner_sum_backward(y_prev, wind_matrix, dist_matrix, d0, kappa, derivative = TRUE, group_id = group_id)
   
   # Weight everything by p_mat
   d_beta  <- sum(p_mat * weight)

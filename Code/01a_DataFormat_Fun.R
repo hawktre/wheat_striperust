@@ -32,22 +32,11 @@ library(sf)
 
 # Get distance and direction summaries ------------------------------------
 ## function for distance and direction matrices
-get_dist_dir <- function(cur.plot, dat) {
-  # Filter to current plot and ensure unique plant locations
-  pts <- dat %>%
-    filter(plotID_new == cur.plot) %>%
-    distinct(plotID_new, plant_num, east, north) %>%
-    st_as_sf(coords = c("east", "north"))
-
-  # Compute pairwise distance matrix
-  dist.mat <- st_distance(pts)
-  
-  # Extract (x, y) coordinates matrix
-  coords <- st_coordinates(pts)
+get_dir <- function(coords) {
   n <- nrow(coords)
   
   # Initialize empty matrix for directions
-  dir.mat <- matrix(NA, nrow = n, ncol = n)
+  dir.mat <- matrix(NA_real_, nrow = n, ncol = n)
   
   # Compute angle from source j to target i
   for (i in 1:n) {
@@ -61,7 +50,7 @@ get_dist_dir <- function(cur.plot, dat) {
   }
   
   # Return results as a list
-  list(dist = dist.mat, dir = dir.mat)
+  return(dir.mat)
 }
 
 # Construct Wind Matrix ----------------------------------------------------------
@@ -101,4 +90,12 @@ get_wind_mat <- function(first_day, last_day, wind, dir.mat){
   }
   
   return(wind_projection_matrix)
+}
+
+
+# Create spatial Grid (For backward Model) --------------------------------
+get_grid <- function(dat, n_row, n_col, name){
+  st_make_grid(dat, n = c(n_col, n_row), what = "polygons") %>%
+    st_sf(grid_id = seq_len(length(.))) %>% 
+    mutate(grid_type = name)
 }

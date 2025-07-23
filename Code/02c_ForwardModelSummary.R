@@ -46,7 +46,7 @@ library(here)
 
 
 # Read in results & Data ---------------------------------------------------------
-fits <- readRDS(here("DataProcessed/results/all_fits_hurdle_logistic.rds"))
+fits <- readRDS(here("DataProcessed/results/forward_model/all_fits_hurdle_logistic.rds"))
 
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat.rds"))
 
@@ -84,6 +84,7 @@ fit.summarise <- function(fits, mod_dat){
     
     #Subset the parameters
     params <- unlist(fit$theta)
+    se <- unlist(fit$theta_se)
     pi <- fit$pi
     
     #Create covariates
@@ -104,11 +105,13 @@ fit.summarise <- function(fits, mod_dat){
     fitted <- (1-pi)*mu_hat
     dev_resid <- compute_deviance_resid(y = dat$y_cur, mu_hat = mu_hat, phi_hat = params[['phi']], pi = pi)
     dev <- sum(dev_resid^2)
+    
     # Assign predictions and residuals
     fits[[plt_visit]]$y_pred <- list(fitted)
     fits[[plt_visit]]$resid <- list(dev_resid)
     fits[[plt_visit]]$deviance <- dev 
-    
+    fits[[plt_visit]]$ci_lower <- list(params - 1.96*se)
+    fits[[plt_visit]]$ci_upper <- list(params + 1.96*se)
     #Assign th the data object for plotting
     mod_dat[[fit$plot_id]][[fit$visit]][['y_pred']] <- fitted
     mod_dat[[fit$plot_id]][[fit$visit]][['dev_resid']] <- dev_resid
