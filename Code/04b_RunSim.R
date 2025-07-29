@@ -11,15 +11,13 @@
 ##
 ## ---------------------------
 
-# setwd("/scratch/hawkintr/wheat_striperust_sim")
+## load up the packages we will need:  (uncomment as required)
+options(repos = c(CRAN = "https://cloud.r-project.org")) 
 
-# ## load up the packages we will need:  (uncomment as required)
-# options(repos = c(CRAN = "https://cloud.r-project.org"))
+pkgs <- c("data.table", "dplyr", "purrr", "stringr",
+          "lubridate", "tidyr")
 
-# pkgs <- c("data.table", "dplyr", "purrr", "stringr",
-#           "lubridate", "tidyr", "furrr", "MASS")
-
-# install.packages(pkgs, dependencies = TRUE)
+install.packages(pkgs, dependencies = TRUE)
 
 library(here)
 library(data.table)
@@ -27,7 +25,6 @@ library(dplyr)
 library(stringr)
 library(lubridate)
 library(tidyr)
-library(MASS)
 library(purrr)
 library(parallel)  # Use base parallel package
 source(here("Code/02a_GradDescentFun.R"))
@@ -39,15 +36,26 @@ forward_fits <- readRDS(here("DataProcessed/results/forward_model/forward_fits.r
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
 
 # Set up parallel simulation
-nsim <- 10000
+nsim <- 20
 ncores <- detectCores(logical = FALSE)  # Physical cores only (optional)
 ncores <- min(nsim, ncores)
 
 set.seed(404)
+
 sim_list <- mclapply(1:nsim, function(i) {
-  single_sim(i, mod_dat, forward_fits,
-             output_dir = here("DataProcessed/results/simulation/errors/"))
-}, mc.cores = ncores)
+  t0 <- Sys.time()
+
+  result <- single_sim(i, mod_dat, forward_fits, output_dir = here("DataProcessed/results/simulation/errors"))
+
+  t1 <- Sys.time()
+  elapsed <- as.numeric(difftime(t1, t0, units = "mins"))
+
+  log_msg <- sprintf("Sim %05d done in %.1f mins at %s\n", i, elapsed, format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
+  cat(log_msg, file = file.path(here("DataProcessed/results/simulation"), "sim_progress.log"), append = TRUE)
+
+  result
+}, mc.cores = ncores, mc.preschedule = FALSE)
+
 
 # Combine results into a data.frame
 sims <- rbindlist(sim_list)

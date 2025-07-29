@@ -8,11 +8,11 @@
 #SBATCH --mail-user hawkintr@oregonstate.edu
 #SBATCH --mail-type=ALL
 
-# Request 4 hours run time
-#SBATCH -t 24:0:0
+# Request run time
+#SBATCH -t 168:00:00
 
 # Specify the partition to run on
-#SBATCH --partition=dri.q
+#SBATCH --partition=share
 
 # Set Memory for job
 #SBATCH --mem=16G
