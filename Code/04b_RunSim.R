@@ -12,10 +12,16 @@
 ## ---------------------------
 
 ## load up the packages we will need:  (uncomment as required)
+user_lib <- "~/R/x86_64-pc-linux-gnu-library/4.4"
+dir.create(user_lib, recursive = TRUE, showWarnings = FALSE)
+.libPaths(user_lib)
+
+# Set CRAN repository
+# This is necessary for the Rscript to run on the HPC cluster
 options(repos = c(CRAN = "https://cloud.r-project.org")) 
 
-pkgs <- c("data.table", "dplyr", "purrr", "stringr",
-          "lubridate", "tidyr")
+# Install required packages if not already installed
+pkgs <- c("data.table", "here", "dplyr", "purrr", "stringr", "tidyr")
 
 install.packages(pkgs, dependencies = TRUE)
 
@@ -35,8 +41,18 @@ source(here("Code/04a_SimFunc.R"))
 forward_fits <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
 
-# Set up parallel simulation
-nsim <-10000
+# Take args from command line
+args <- commandArgs(trailingOnly = TRUE)
+
+# Set default value of simulations
+nsim <- 20
+# Override with argument if provided
+if (length(args) >= 1) {
+  nsim <- as.numeric(args[1])
+}
+
+cat("Running", nsim, "simulations\n")
+
 ncores <- detectCores(logical = FALSE)  # Physical cores only (optional)
 ncores <- min(nsim, ncores)
 
