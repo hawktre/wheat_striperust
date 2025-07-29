@@ -49,3 +49,4 @@ Code/Archive/cdm_project/*
 *.pdf
 *.zip
 Reports/05a_SourceDetection_ModelConsiderations_cache/*
+*.png
