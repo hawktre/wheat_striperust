@@ -42,8 +42,14 @@ if (length(args) >= 1) {
 
 cat("Running", nsim, "simulations\n")
 
-ncores <- detectCores(logical = FALSE)  # Physical cores only (optional)
+# Use SLURM_CPUS_PER_TASK if available
+ncores <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK"))
+if (is.na(ncores) || ncores <= 0) {
+  ncores <- parallel::detectCores(logical = FALSE)
+}
 ncores <- min(nsim, ncores)
+
+cat("Using", ncores, "cores for simulations\n")
 
 set.seed(404)
 
@@ -59,7 +65,7 @@ sim_list <- mclapply(1:nsim, function(i) {
   cat(log_msg, file = file.path(here("DataProcessed/results/simulation"), "sim_progress.log"), append = TRUE)
 
   result
-}, mc.cores = ncores, mc.preschedule = FALSE)
+}, mc.cores = ncores)
 
 
 # Combine results into a data.frame
