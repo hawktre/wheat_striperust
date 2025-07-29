@@ -29,6 +29,7 @@ vignettes/*.pdf
 *.rda
 *.rdata
 *.rda
+*.rds
 # Text files
 *.csv
 *.txt
@@ -40,13 +41,11 @@ vignettes/*.pdf
 *.xport
 # Access
 *.mdb
-DataRaw/*
-DataProcessed/*
-Code/Archive/cdm_project/*
-!*/ReadMe.md
 # Reports
 *.html
 *.pdf
 *.zip
-Reports/05a_SourceDetection_ModelConsiderations_cache/*
+# Figures
 *.png
+*.jpg
+*.jpeg
