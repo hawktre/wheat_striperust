@@ -36,7 +36,7 @@ forward_fits <- readRDS(here("DataProcessed/results/forward_model/forward_fits.r
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
 
 # Set up parallel simulation
-nsim <- 20
+nsim <-10000
 ncores <- detectCores(logical = FALSE)  # Physical cores only (optional)
 ncores <- min(nsim, ncores)
 
