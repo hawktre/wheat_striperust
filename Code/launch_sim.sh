@@ -5,7 +5,7 @@
 #SBATCH -e stripe_sim.err        # name of error file for batch script 
 #SBATCH -c 32           # number of cores per task
 #SBATCH --mem=64g        # memory needed for job
-#SBATCH --time=3-00:00:00  # time needed for job
+#SBATCH --time=7-00:00:00  # time needed for job
 
 # gather basic information, can be useful for troubleshooting
 hostname
