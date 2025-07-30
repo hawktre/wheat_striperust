@@ -3,8 +3,8 @@
 #SBATCH -p share         # name of partition/queue to use
 #SBATCH -o stripe_sim.out        # name of output file for batch script
 #SBATCH -e stripe_sim.err        # name of error file for batch script 
-#SBATCH -c 32            # number of cores per task
-#SBATCH --mem=64g        # memory needed for job
+#SBATCH -c 24            # number of cores per task
+#SBATCH --mem=48g        # memory needed for job
 #SBATCH --time=3-00:00:00  # time needed for job
 
 # gather basic information, can be useful for troubleshooting
