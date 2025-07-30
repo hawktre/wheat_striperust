@@ -1,31 +1,29 @@
 #!/bin/bash
-#SBATCH -J StripeSim       # name of my job
-#SBATCH -p dri.q        # name of partition/queue to use
-#SBATCH -o stripe_sim.out        # name of output file for batch script
-#SBATCH -e stripe_sim.err        # name of error file for batch script 
-#SBATCH -c 32           # number of cores per task
-#SBATCH --mem=64g        # memory needed for job
-#SBATCH --time=7-00:00:00  # time needed for job
+#SBATCH -J StripeSim             # Job name
+#SBATCH -p dri.q                # Partition/queue name
+#SBATCH -o stripe_sim.out       # Stdout log
+#SBATCH -e stripe_sim.err       # Stderr log
+#SBATCH -c 32                   # Number of cores
+#SBATCH --mem=64G               # Memory
+#SBATCH --time=7-00:00:00       # Max runtime (7 days)
 
-# gather basic information, can be useful for troubleshooting
+# Basic job info
 hostname
-echo $SLURM_JOBID
+echo "Job ID: $SLURM_JOBID"
+echo "Running on $(date)"
 
-#export R library path
-export R_LIBS=~/R/x86_64-pc-linux-gnu-library/4.4
+# Use consistent custom R library path
+export R_LIBS=$HOME/R_libs/4.4
 
-# load modules needed for job
+# Load R module
 module load R
 
-# run my job
-date
+# Pass the first command-line argument to Rscript (default to 20 if none given)
+NSIMS=${1:-20}
 
-# run R code, print output to file "hello.out"
-Rscript --vanilla Code/04b_RunSim.R
+Rscript --vanilla Code/04b_RunSim.R $NSIMS
 
-# print date and time when job is finished
-date
+
+# Confirm completion
+echo "Finished at $(date)"
 echo "R job completed successfully."
-# end of script
-exit
-

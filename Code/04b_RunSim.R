@@ -11,15 +11,12 @@
 ##
 ## ---------------------------
 
-user_lib <- "~/R/x86_64-pc-linux-gnu-library/4.4"
+user_lib <- "/home/hawkintr/R_libs/4.4"
 .libPaths(user_lib)
 
 library(here)
 library(data.table)
 library(dplyr)
-library(stringr)
-library(lubridate)
-library(tidyr)
 library(purrr)
 library(parallel)  # Use base parallel package
 source(here("Code/02a_GradDescentFun.R"))
