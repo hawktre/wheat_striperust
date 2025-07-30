@@ -8,5 +8,5 @@
 #SBATCH --partition=dri.q
 
 module load R
-Rscript install_pkgs.R
+Rscript Code/install_pkgs.R
 echo "Package installation completed successfully."
