@@ -1,30 +1,29 @@
-#!/bin/bash -l
+#!/bin/bash
+#SBATCH -J StripeSim       # name of my job
+#SBATCH -p dri.q        # name of partition/queue to use
+#SBATCH -o stripe_sim.out        # name of output file for batch script
+#SBATCH -e stripe_sim.err        # name of error file for batch script 
+#SBATCH -c 32           # number of cores per task
+#SBATCH --mem=64g        # memory needed for job
+#SBATCH --time=3-00:00:00  # time needed for job
 
-#SBATCH -J wheat_striperust_sim
-#SBATCH -o wheat_striperust.output
-#SBATCH -e error.output
+# gather basic information, can be useful for troubleshooting
+hostname
+echo $SLURM_JOBID
 
-# Default in slurm
-#SBATCH --mail-user hawkintr@oregonstate.edu
-#SBATCH --mail-type=ALL
+# load modules needed for job
 
-# Request run time
-#SBATCH -t 168:00:00
+module load R
 
-# Specify the partition to run on
-#SBATCH --partition=share
+# run my job
+date
 
-# Set Memory for job
-#SBATCH --mem=16G
-#SBATCH --cpus-per-task=32
-#SBATCH --ntasks=1
-
-# Change version of R
-
-echo "start R job"
-
-module load R/4.4.1
-
+# run R code, print output to file "hello.out"
 Rscript --vanilla Code/04b_RunSim.R
 
-echo "R Finished"
+# print date and time when job is finished
+date
+echo "R job completed successfully."
+# end of script
+exit
+
