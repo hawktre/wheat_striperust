@@ -11,8 +11,10 @@
 hostname
 echo $SLURM_JOBID
 
-# load modules needed for job
+#export R library path
+export R_LIBS=~/R/x86_64-pc-linux-gnu-library/4.4
 
+# load modules needed for job
 module load R
 
 # run my job
