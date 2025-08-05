@@ -42,13 +42,11 @@ cat("Running", nsim, "simulations\n")
 # Use SLURM_CPUS_PER_TASK if available
 ncores <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK"))
 if (is.na(ncores) || ncores <= 0) {
-  ncores <- parallel::detectCores(logical = FALSE)
+  ncores <- parallel::detectCores(logical = FALSE) - 1
 }
 ncores <- min(nsim, ncores)
 
 cat("Using", ncores, "cores for simulations\n")
-
-set.seed(404)
 
 sim_list <- mclapply(1:nsim, function(i) {
   t0 <- Sys.time()

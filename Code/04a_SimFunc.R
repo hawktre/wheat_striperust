@@ -27,15 +27,23 @@ options(scipen = 6, digits = 4)
 ## load up the packages we will need:  (uncomment as required)
 
 # Function to simulate the data -------------------------------------------
-disease_sim <- function(pars, mu){
+disease_sim <- function(pars, mu, pi) {
   phi <- pars[["phi"]]
   
-  #convert back to shape and scale 
+  # Convert to shape parameters
   alpha <- mu * phi
-  beta <- phi*(1-mu)
+  beta <- phi * (1 - mu)
   
-  #Draw from beta distribution
-  map2_dbl(alpha, beta, ~rbeta(1, shape1 = .x, shape2 = .y)) 
+  # Minimum perceptible value
+  min_detectable <- 0.0001
+  
+  # Draw from beta and clip
+  sim_dat <- map2_dbl(alpha, beta, ~max(min_detectable, rbeta(1, shape1 = .x, shape2 = .y)))
+  
+  # Apply zero inflation
+  zeros <- rbinom(length(sim_dat), size = 1, prob = 1 - pi)
+  
+  return(sim_dat * zeros)
 }
 
 # Forward Fit -------------------------------------------------------------
@@ -53,7 +61,7 @@ forward_fit <- function(blk, trt, vst, mod_dat, dist, kappa_try) {
   for (kappa in kappa_try) {
     init_theta <- mod_dat$inits[, kappa, blk, trt, vst] #Current inits
     
-    fit <- try(
+    fit <- tryCatch(
       optim(
         par = init_theta,
         fn = neg_loglik,
@@ -66,10 +74,14 @@ forward_fit <- function(blk, trt, vst, mod_dat, dist, kappa_try) {
         wind_matrix = wind[non_zero, non_zero],
         dist_matrix = dist[non_zero, non_zero]
       ),
-      silent = TRUE
+      error = function(e) {
+        message(sprintf("forward_fit failed: %s [blk=%s, trt=%s, vst=%s, kappa=%s]",
+                        conditionMessage(e), blk, trt, vst, kappa))
+        return(NULL)
+      }
     )
     
-    if (!inherits(fit, "try-error")) {
+    if (!is.null(fit)) {
       results_list[[length(results_list) + 1]] <- list(
         block = blk,
         treat = as.numeric(trt),
@@ -82,6 +94,7 @@ forward_fit <- function(blk, trt, vst, mod_dat, dist, kappa_try) {
         pi = pi
       )
     }
+    
   }
   
   if (length(results_list) > 0) {
@@ -130,7 +143,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
   
   # EM loop
   for (em_iter in seq_len(max_em_iter)) {
-    fit <- try(
+    fit <- tryCatch(
       optim(
         par = theta,
         fn = wrapped_obj,
@@ -144,13 +157,20 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
         dist_matrix = dist[non_zero, non_zero],
         group_id = groups[non_zero]
       ),
-      silent = TRUE
+      error = function(e) {
+        msg <- sprintf(
+          "EM step %d failed in backward_fit [config=%s, block=%s, treat=%s, visit=%s]: %s",
+          em_iter, config, blk, trt, vst, conditionMessage(e)
+        )
+        warning(msg)
+        
+        # Optional: save debug info to file
+        # saveRDS(list(theta = theta, p_mat = p_mat, config = config, blk = blk, trt = trt, vst = vst),
+        #         file = sprintf("debug_backward_fail_%s_%s_%s_%s.rds", config, blk, trt, vst))
+        
+        return(NULL)
+      }
     )
-    
-    if (inherits(fit, "try-error")) {
-      warning(paste("EM step", em_iter, "failed"))
-      return(NULL)
-    }
     
     theta_new <- fit$par
     
@@ -252,7 +272,10 @@ source_pred <- function(config, blk, trt, vst, p_mat, mod_dat) {
 
 # Wrapper Function for the simulation -------------------------------------
 single_sim <- function(sim_id, dat, forward_mod, output_dir = here("DataProcessed/results/simulation")) {
+  base_seed <- 404
+  set.seed(base_seed + sim_id)
   tryCatch({
+    browser()
     # Set up indices
     blocks <- dimnames(dat$intensity)[["block"]]
     treats <- dimnames(dat$intensity)[["treat"]]
@@ -267,8 +290,9 @@ single_sim <- function(sim_id, dat, forward_mod, output_dir = here("DataProcesse
         for (vst in visits[-1]) {
           fit <- forward_mod[block == blk & treat == as.numeric(trt) & visit == as.numeric(vst)]
           pars <- fit[["theta"]][[1]]
+          pi <- fit[["pi"]]
           fitted <- fit[["fitted"]][[1]]
-          intensity_sim[, blk, trt, vst] <- disease_sim(pars, fitted)
+          intensity_sim[, blk, trt, vst] <- disease_sim(pars, fitted, pi)
         }
       }
     }
@@ -301,9 +325,13 @@ single_sim <- function(sim_id, dat, forward_mod, output_dir = here("DataProcesse
     return(results_merge)
     
   }, error = function(e) {
-    # On failure, save what we can and keep going
     err_file <- file.path(output_dir, paste0("sim_error_", sim_id, ".txt"))
-    writeLines(c("Simulation failed:", conditionMessage(e)), con = err_file)
+    writeLines(c(
+      "Simulation failed:",
+      conditionMessage(e),
+      capture.output(traceback(max.lines = 10))
+    ), con = err_file)
     return(NULL)
   })
 }
+
