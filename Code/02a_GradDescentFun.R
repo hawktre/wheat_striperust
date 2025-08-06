@@ -60,7 +60,7 @@ initialize_theta <- function(y_cur, y_prev, wind_mat, dist_mat, d_0, kappa_try) 
                         kappa = kappa_try
   )
   
-  mod_df <- data.frame(y = logit(y_cur + 1e-3),
+  mod_df <- data.frame(y = logit(y_cur),
                        X1 = X1,
                        X2 = X2)
   
