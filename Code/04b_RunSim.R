@@ -11,8 +11,8 @@
 ##
 ## ---------------------------
 
-#user_lib <- "/home/hawkintr/R_libs/4.4"
-#.libPaths(user_lib)
+user_lib <- "/home/hawkintr/R_libs/4.4"
+.libPaths(user_lib)
 
 library(here)
 library(data.table)
