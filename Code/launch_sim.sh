@@ -1,6 +1,5 @@
 #!/bin/bash
 #SBATCH -J StripeSim             # Job name
-#SBATCH -p dri.q                # Partition/queue name
 #SBATCH -o stripe_sim.out       # Stdout log
 #SBATCH -e stripe_sim.err       # Stderr log
 #SBATCH -c 32                   # Number of cores
