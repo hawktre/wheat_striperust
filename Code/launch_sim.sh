@@ -2,8 +2,8 @@
 #SBATCH -J StripeSim             # Job name
 #SBATCH -o stripe_sim.out       # Stdout log
 #SBATCH -e stripe_sim.err       # Stderr log
-#SBATCH -c 32                   # Number of cores
-#SBATCH --mem=64G               # Memory
+#SBATCH -c 24                   # Number of cores
+#SBATCH --mem=48G               # Memory
 #SBATCH --time=7-00:00:00       # Max runtime (7 days)
 
 # Basic job info
