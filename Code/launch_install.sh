@@ -5,7 +5,6 @@
 #SBATCH --time=00:30:00
 #SBATCH --mem=8G
 #SBATCH --cpus-per-task=4
-#SBATCH --partition=dri.q
 
 # Load R module
 module load R
