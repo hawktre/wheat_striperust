@@ -38,11 +38,14 @@ mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
 
 # Forward model parameters ------------------------------------------------
 forward_sims <- sims %>% 
-  select(sim, block, treat, visit, iters, init_kappa, theta, pi) %>% 
+  select(sim, block, treat, visit, iters, converged.forward, init_kappa, theta, pi) %>% 
   distinct()
 
-library(dplyr)
-library(tidyr)
+not_converged_forward <- forward_sims %>% 
+  filter(!converged.forward) %>% 
+  group_by(block, treat, visit) %>% 
+  summarise(N = n())
+  
 
 forward_sims_long <- forward_sims %>%
   # Convert each named theta vector into a tibble (with name = param)

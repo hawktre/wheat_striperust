@@ -1,0 +1,119 @@
+---
+title: "Spread and Source Detection of Wheat Stripe Rust in an Experimental Framework"
+subtitle: "Simulation Results"
+author:   
+  - name: Trent VanHawkins
+    affiliations:
+      - ref: osu
+    degrees: MS
+    corresponding: true
+  - name: Christopher Mundt
+    affiliations:
+      - ref: osu
+    degrees: PhD
+  - name: David Gent
+    affiliations:
+      - ref: usda
+      - ref: osu
+    degrees: PhD
+  - name: Shirshendu Chatterjee
+    affiliations:
+      - ref: nyu
+    degrees: PhD
+  - name: Sharmodeep Bhattacharyya
+    affiliations:
+      - ref: osu
+    degrees: PhD
+affiliations:
+  - id: osu
+    name: Oregon State University
+  - id: usda
+    name: U.S. Department of Agriculture
+  - id: nyu
+    name: City University of New York
+format: 
+  html:
+    lightbox: auto
+embed-resources: true
+toc: true
+code-fold: true
+execute: 
+  warning: false
+code-links:
+  - text: GitHub Repository
+    href: https://github.com/hawktre/wheat_striperust
+page-layout: full
+references: references.bib
+bibliography: references.bib
+---
+
+# Introduction
+
+Previous reports for this project have documented the development and implementation of a model for the spread of Stripe Rust (*Puccinia striiformis*) among Wheat plants, using infection data collected from an experimental study conducted between April and July of 2024 at the Hyslop Crop Science Field Laboratory in Benton County, Oregon. The reports in the table below will recall the work that has been accomplished up to this point in chronological order.
+
+| Report Name | Description |
+|----------------------------|--------------------------------------------|
+| 00_EDA | Exploratory Data Analysis |
+| 00a_ModelingConsiderations | Modeling framework and derivations for non-linear Beta regression, accounting for zero-inflation |
+| 04_ModelResults_Hurdle_logistic | Preliminary modeling results for the spread of the disease |
+| 05a_SourceDetection_ModelConsiderations | Modeling framework and derivations for a source-detection model built upon the forward model. |
+| 05b_BackwardModel.qmd | Implementation and results from the Backward Model using the dataset from the present study. |
+
+In the previous report, 05b_BackwardModel, we implemented a framework for source detection (also referred to as a 'backwards model') by leveraging the optimized model parameters from the 'forward' model in an Expectation-Maximization (EM) optimization scheme, and presented preliminary results using the dataset from the present study. 
+
+Here, we check the accuracy and validity of the proposed model in a simulation study. Specifically, we simulate data using the learned parameters from previous reports and test the models ability to recover these parameters and accurately predict the source of disease outbreak.
+
+# Methods
+
+We have extensively documented preliminary analyses and model derivations in previous reports. Here, we briefly highlight those aspects of experimental design and model development which are essential to interpreting source-detection results.
+
+## Experimental Design
+
+This experiment was conducted between the months of April and July of 2024 at the Hyslop Crop Science Field Laboratory in Benton County, Oregon. Wheat was planted in one of four blocks (labeled A-D), each containing three replicates (plots). Within each block, each $30.5 \times 30.5$ m plot was inoculated with spores from *Puccinia stiiformis* at one, two, or four locations of equal size ($0.76 \times 0.76$ m) between April 9th and April 25th, 2024. After approximately one month, plots were surveyed weekly for **five** consecutive weeks beginning May 17th, 2024. At each survey, domain experts visually estimated disease prevalence in $1.52 \times 1.52$ m grids, expressed as a percentage (0-100) of infected plant tissue within the sampling grid. Individual sampling locations are distinguished by their distance from the plot origin in meters. Further details of the experimental design may be found on pages 6 & 7 of the EEID Project Grant.
+
+## Data Acquisition, Cleaning, and Exploration
+
+Survey data, along with inoculum locations were provided by Chris Mundt. Additional data capturing wind speed (mph) and direction (degrees azimuth) were acquired from a local weather station \<1 km from the survey locations at a 15-minute resolution for the duration of the study period.
+
+## Simulation Procedures
+
+As was documented in previous reports, we have estimated the parameter vector $\boldsymbol\theta = \begin{bmatrix} \boldsymbol\tau & \phi\end{bmatrix}^\top = \begin{bmatrix} \beta & \delta & \gamma & \kappa & \phi\end{bmatrix}^\top$ using a non-linear beta-regression framework as is specified by @eq-meanmod.
+
+$$
+\log\left(\frac{\mu_{i,t}}{1-\mu_{i,t}}\right) = \eta_{i,t} = \beta+ \delta y_{i,t-1}(1 - y_{i,t-1}) + \gamma\sum_{j \neq i}\left(y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}\right)
+$$ {#eq-meanmod}
+
+Recall that when we assume that disease intensity $y_{i,t}$ follows a $\text{Beta}(\mu_{i,t}, \phi_t)$ distribution, $\phi_t$ is a nuisance parameter that can likewise be estimated with maximum likelihood methods. Also recall that we established zero-inflation within the experimental framework, as many plants did not have detectable levels of disease at early timepoints. We accounted for this zero-inflation process using a hurdle-model approach in which we estimate the parameter $\hat\pi_{i,t}$ for each block-treatment-visit combination, which characterizes a Bernoulli distribution governing the number of non-infected plants. 
+
+To assess any potential bias in our modeling framework and any potential downstream effects, we ran a simulation study with the following steps. For each block-treatment-visit combination: 
+
+1. Simulate $n = 64$ observations from a $\text{Beta} \left( \hat\mu_i, \hat\phi \right)$ distribution.
+2. Simulate non-diseased plants from a $\text{Bernoulli}(\hat\pi)$. 
+3. Fit the forward model as described in `00a_ModelingConsiderations` to estimate $\boldsymbol{\hat\theta}^{(k)}$. 
+4. Using $\boldsymbol{\hat\theta}^{(k)}$ as an initialization, fit the backward model to estimate $\hat{p}_{i, s}^{(k)}$ --- the probability that plant $i$ was infected by source-group $s$. 
+5. Aggregate elements of $\boldsymbol{\hat p}$ to predict the source of infection as is described in `05b_BackwardModel`. 
+6. Repeat steps 1-5 10,000 times (K = 10,000).
+
+Additional details on model initialization, fitting, and subsequent prediction can be found in the relevant reports as listed in the table above. 
+
+## Metrics for Model Evaluation
+
+We primarily evaluate the forward model for bias in parameter estimation, and the backward model for its predictive ability. 
+
+### Forward Model
+For the forward model, we specifically measure bias as 
+
+$$
+\text{Bias}^{(k)} = \boldsymbol{\hat\theta}^{(k)} - \boldsymbol{\hat\theta}
+$$
+That is, we compute the difference between the estimated parameter vector in simulation $k \in K$ and the parameter vector estimated from the experimental data. We additionally kept track of whether the model converged and, if so, how many iterations were required using the quasi-Newtonian optimization algorithm (`optim(method = "BFGS")`). 
+
+### Backward Model
+
+In the case that there was only one true source, we defined prediction error as the the distance from the centroid of the predicted source to the centroid of the true source. Additionally, we defined a distance-weighted accuracy score as
+
+$$
+\text{score}_i = 1 - \frac{d_{\text{pred}}}{d_{\text{max}}}
+$$
+
+Where $d_{\text{pred}}$ is the distance-based error and $d_{\text{max}}$ is the largest possible distance from the true source within the plot. This method has some advantages, as we can take the average score across various partitions of the experiment. In addition to these metrics, we can use the standard suite of multi-class prediction metrics including accuracy and $F_1$-score. 
