@@ -145,7 +145,6 @@ neg_loglik <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.
   mu <- pmin(pmax(mu, 1e-6), 1 - 1e-6)
   phi <- pmax(phi, 1e-6)
   
-  
   -loglik_beta(y_current, mu, phi)
 }
 
@@ -176,8 +175,3 @@ neg_grad <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01
   # Return negative gradients
   -c(beta = d_beta, delta = d_delta, gamma = d_gamma, kappa = d_kappa, phi = d_phi)
 }
-
-
-# Compute Fitted Values ---------------------------------------------------
-
-

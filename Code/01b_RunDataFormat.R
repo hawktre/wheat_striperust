@@ -115,34 +115,6 @@ n_params <- length(param_names)
 #Define values of kappa to try
 kappa_try <- seq(0.25,2.5,0.25)
 
-init_array <- array(NA_real_, dim = c(n_params, length(kappa_try), n_blocks, n_trt, n_visits - 1),
-                    dimnames = list(
-                      params = param_names,
-                      kappa_try = paste0(kappa_try),
-                      block = LETTERS[1:n_blocks],
-                      treat = paste0(sort(unique(stripe.clean$treat))),
-                      visit = paste0(2:n_visits)))
-
-
-# Append inits to kappa_array
-for (blk in dimnames(init_array)$block) {
-  for(trt in dimnames(init_array)$treat){
-    for(vst in dimnames(init_array)$visit){
-      for (kap in dimnames(init_array)$kappa_try) {
-        
-        init_array[,kap,blk, trt, vst] <- initialize_theta(y_cur = intensity[,blk,trt,vst],
-                                                                  y_prev = intensity[,blk,trt,as.numeric(vst)-1],
-                                                                  wind_mat = wind_array[,,blk,trt,vst],
-                                                                  dist_mat = dist_mat,
-                                                                  d_0 = 0.01,
-                                                                  kappa_try = as.numeric(kap))
-        
-      }
-    }
-  }
-}
-
-
 # Assign Groups (For Backward Model) --------------------------------------
 stripe_sp <- stripe %>% select(plant_num, east, north) %>% distinct() %>% st_as_sf(coords = c("east", "north"))
 configs <- c("2 x 2", "4 x 2", "2 x 4", "4 x 4")
@@ -191,7 +163,6 @@ for (blk in dimnames(true_infect)$block) {
 mod_dat <- list(intensity = intensity,
                 dist = dist_mat,
                 wind = wind_array,
-                inits = init_array,
                 groups = plant_group,
                 truth = true_infect,
                 grid_dist = grid_dist)

@@ -11,16 +11,16 @@
 ##
 ## ---------------------------
 
-user_lib <- file.path(Sys.getenv("HOME"), "R_libs/4.4")
-.libPaths(user_lib)
+# user_lib <- file.path(Sys.getenv("HOME"), "R_libs/4.4")
+# .libPaths(user_lib)
 
 library(here)
 library(data.table)
 library(dplyr)
 library(purrr)
 library(parallel)  # Use base parallel package
-source(here("Code/02a_GradDescentFun.R"))
-source(here("Code/03a_EMgradfun.R"))
+source(here("Code/02b_ForwardModelFun.R"))
+source(here("Code/03b_BackwardModelFun.R"))
 source(here("Code/04a_SimFunc.R"))
 
 # Read in data
@@ -31,7 +31,7 @@ mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
 args <- commandArgs(trailingOnly = TRUE)
 
 # Set default value of simulations
-nsim <- 20
+nsim <- 10
 # Override with argument if provided
 if (length(args) >= 1) {
   nsim <- as.numeric(args[1])
@@ -51,7 +51,7 @@ cat("Using", ncores, "cores for simulations\n")
 sim_list <- mclapply(1:nsim, function(i) {
   t0 <- Sys.time()
 
-  result <- single_sim(i, mod_dat, forward_fits, output_dir = here("DataProcessed/results/simulation/errors"))
+  result <- single_sim(i, mod_dat, forward_fits, kappa_try = seq(0.25, 2.5, 0.25), output_dir = here("DataProcessed/results/simulation/errors"))
 
   t1 <- Sys.time()
   elapsed <- as.numeric(difftime(t1, t0, units = "mins"))

@@ -1,12 +1,12 @@
 ## ---------------------------
 ##
-## Script name: 04_ModelFit_Hurdle_Logistic.R
+## Script name: 02c_ModelFun.R
 ##
-## Purpose of script: Fit model with logistic autoinfection term
+## Purpose of script: Contains all necessary modeling functions 
 ##
 ## Author: Trent VanHawkins
 ##
-## Date Created: 2025-05-16
+## Date Created: 2025-08-20
 ##
 ##
 ## ---------------------------
@@ -23,35 +23,12 @@
 options(scipen = 6, digits = 4) 
 
 ## ---------------------------
-
-## load up the packages we will need:  (uncomment as required)
 library(here)
-library(purrr)
-library(data.table)
-library(MASS)
-# Read in the data --------------------------------------------------------
-mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
-source(here("Code/02a_GradDescentFun.R"))
+source(here("Code/02a_ForwardGradFun.R"))
 
-
-# Set up indices ----------------------------------------------------------
-blocks <- dimnames(mod_dat$intensity)[["block"]]
-treats <- dimnames(mod_dat$intensity)[["treat"]]
-visits <- dimnames(mod_dat$intensity)[["visit"]]
-kappa_try <- dimnames(mod_dat$inits)[["kappa_try"]]
-
-combos <- expand.grid(
-  block = blocks,
-  treat = treats,
-  visit = visits[2:length(visits)],
-  stringsAsFactors = FALSE
-)
-# Set up data -------------------------------------------------------------
-dist <- mod_dat$dist #doesn't change
-
-# Fit the model -----------------------------------------------------------
-
+# Forward Fits -------------------------------------------------------------
 forward_fit <- function(blk, trt, vst, mod_dat, dist, kappa_try) {
+
   ## Extract Needed Model Data
   intensity <- mod_dat$intensity[, blk, trt, vst]
   intensity_prev <- mod_dat$intensity[, blk, trt, as.numeric(vst) - 1]
@@ -63,44 +40,52 @@ forward_fit <- function(blk, trt, vst, mod_dat, dist, kappa_try) {
   results_list <- list()
   
   for (kappa in kappa_try) {
-    init_theta <- mod_dat$inits[, kappa, blk, trt, vst] #Current inits
+    #Generate initial values for current kappa in grid search
+    init_theta <- initialize_theta(y_cur = intensity[non_zero], 
+                                   y_prev = intensity_prev[non_zero], 
+                                   wind_mat = wind[non_zero, non_zero], 
+                                   dist_mat = dist[non_zero, non_zero], 
+                                   kappa_try = as.numeric(kappa),
+                                   d_0 = 0.01)
     
-    fit <- try(
+    fit <- tryCatch(
       optim(
         par = init_theta,
         fn = neg_loglik,
         gr = neg_grad,
         method = "BFGS",
-        hessian = TRUE,
-        control = list(maxit = 5000, reltol = 1e-8),
+        control = list(maxit = 10000, reltol = 1e-8),
         y_current = intensity[non_zero],
         y_prev = intensity_prev[non_zero],
         wind_matrix = wind[non_zero, non_zero],
         dist_matrix = dist[non_zero, non_zero]
       ),
-      silent = TRUE
+      error = function(e) {
+        message(sprintf("forward_fit failed: %s [blk=%s, trt=%s, vst=%s, kappa=%s]",
+                        conditionMessage(e), blk, trt, vst, kappa))
+        return(NULL)
+      }
     )
     
-    if (!inherits(fit, "try-error")) {
-      se <- sqrt(diag(ginv(fit$hessian)))
+    if (!is.null(fit)) {
       results_list[[length(results_list) + 1]] <- list(
         block = blk,
         treat = trt,
         visit = vst,
-        iters = fit$counts[1],
-        init_kappa = unname(init_theta["kappa"]),
+        iters = fit$counts[2],
+        init_kappa = as.numeric(kappa),
         neg_loglik = fit$value,
         converged = fit$convergence == 0,
         theta = list(fit$par),
-        theta_se = list(se),
         pi = pi
       )
     }
+    
   }
   
   if (length(results_list) > 0) {
     visit_dt <- rbindlist(results_list)
-    visit_dt <- visit_dt[neg_loglik > -1e5]
+    visit_dt <- visit_dt[neg_loglik > -1e5 & converged == T]
     if (nrow(visit_dt) > 0) {
       return(visit_dt[which.min(neg_loglik)])
     }
@@ -109,21 +94,8 @@ forward_fit <- function(blk, trt, vst, mod_dat, dist, kappa_try) {
   return(NULL)
 }
 
-library(furrr)
-plan(multisession, workers = 4)
 
-start <- Sys.time()
-free_fits <- future_pmap(
-  combos,
-  ~forward_fit(..1, ..2, ..3, mod_dat, dist, kappa_try)
-) %>% rbindlist()
-end <- Sys.time()
-runtime <- difftime(end, start, units = "mins")  # could be "mins", "hours", etc.
-message("Runtime = ", round(runtime, 2), " minutes")
-plan(sequential)
-
-
-# Get fitted values -------------------------------------------------------
+# Forward Model Fitted Values ---------------------------------------------
 get_fitted <- function(blk, trt, vst, par, mod_dat, d0 = 0.01) {
   y_prev <- mod_dat$intensity[,blk,trt,as.numeric(vst) - 1]
   wind_matrix <- mod_dat$wind[,,blk,trt,vst]
@@ -152,6 +124,31 @@ get_fitted <- function(blk, trt, vst, par, mod_dat, d0 = 0.01) {
   return(pmin(pmax(mu_mat, 1e-6), 1 - 1e-6))  # Clip for stability
 }
 
-free_fits$fitted <- pmap(free_fits, ~get_fitted(blk = ..1, trt = ..2, vst = ..3, par = ..8, mod_dat))
-saveRDS(free_fits, here("DataProcessed/results/forward_model/forward_fits.rds"))
+
+# Forward Model Deviance Residuals ----------------------------------------
+compute_deviance_resid <- function(blk, trt, vst, par, pi, fitted, data) {
+
+  y <- data$intensity[,blk, trt, vst]
+  mu_hat <- fitted
+  phi_hat <- par[["phi"]] 
+  
+  is_zero <- y == 0
+  is_pos <- !is_zero
+  
+  ll_fit <- numeric(length(y))
+  ll_sat <- numeric(length(y))
+  
+  # Zero values
+  ll_fit[is_zero] <- log(pi)
+  ll_sat[is_zero] <- log(pi)  # same since model fits perfectly
+  
+  # Positive values
+  ll_fit[is_pos] <- log(1 - pi) + loglik_beta(y[is_pos], mu_hat[is_pos], phi_hat, sum = FALSE)
+  ll_sat[is_pos] <- log(1 - pi) + loglik_beta(y[is_pos], y[is_pos], phi_hat, sum = FALSE)
+  
+  sqrt_term <- pmax(0, 2 * (ll_sat - ll_fit))
+  sign(y - (1 - pi) * mu_hat) * sqrt(sqrt_term)
+}
+
+
 

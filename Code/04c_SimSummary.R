@@ -48,6 +48,7 @@ not_converged_forward <- forward_sims %>%
   
 
 forward_sims_long <- forward_sims %>%
+  filter(converged.forward == T) %>% 
   # Convert each named theta vector into a tibble (with name = param)
   mutate(theta = map(theta, ~ enframe(.x, name = "param", value = "value"))) %>%
   # Unnest into long format
@@ -62,6 +63,23 @@ true_params <- forward %>%
          visit = as.numeric(visit))
   
 forward_sims_and_truth <- left_join(forward_sims_long, true_params, by = c("block", "treat", "visit", "param"), suffix = c(".sim", ".true"))
+
+bias_df <- forward_sims_and_truth %>% 
+  select(sim, block, treat, visit, param, value.sim, value.true) %>% 
+  mutate(bias = value.sim - value.true)
+
+gamma_bias <- bias_df %>% 
+  filter(param == "gamma", abs(bias) > 100)
+
+bias_summary <- bias_df %>% 
+  group_by(block, treat, visit, param) %>% 
+  summarise(mean_bias = mean(bias),
+            med_bias = median(bias), 
+            sd_bias = sd(bias)) %>% 
+  arrange(mean_bias)
+
+bias_gamma <- bias_summary %>% filter(param == "gamma")
+bias_ngamma <- bias_summary %>% filter(param != "gamma")
 # Make a boxplot of parameter distributions -------------------------------
 plot_forward_sims <- function(blk){
   forward_sims_and_truth %>%

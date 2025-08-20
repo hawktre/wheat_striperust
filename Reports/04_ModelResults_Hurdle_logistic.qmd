@@ -260,12 +260,25 @@ greek_cols <- RColorBrewer::brewer.pal(5, "Set1")
 #Read in results
 
 ## Fits results
-fits <- readRDS(here("DataProcessed/results/fits_appended_hurdle_logistic.rds"))
+fits <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))
+
+theta_long <- fits %>%
+    select(block, treat, visit, theta) %>%
+    unnest_wider(theta) %>%         
+    pivot_longer(
+      cols = c(beta, delta, gamma, kappa, phi), 
+      names_to = "parameter",
+      values_to = "estimate")
+
+theta_long %>% 
+  ggplot(aes(x = visit, y = estimate, color = parameter))+
+  geom_line(linewidth = 1)+
+  facet_grid(block~treat)
 
 plot_theta <- function(fits, title){
   #Pivot-longer for tables and plotting
-  theta_long <- bind_rows(fits$fits) %>%
-    select(plot_id, visit, theta) %>%
+  theta_long <- fits %>%
+    select(block, treat, visit, theta) %>%
     unnest_wider(theta) %>%         # Step 2: unpack theta list column
     pivot_longer(
       cols = c(beta, delta, gamma, kappa, phi),  # adjust if other parameters present
@@ -275,10 +288,10 @@ plot_theta <- function(fits, title){
     mutate(visit_num = parse_number(visit))
   
   theta_long %>% 
-    ggplot(aes(x = visit_num, y = estimate, colour = parameter)) +
+    ggplot(aes(x = visit, y = estimate, colour = parameter)) +
     geom_point(size = 2) +
     geom_line(linewidth = 1) +
-    facet_wrap(~ plot_id, nrow = 4, ncol = 3, scales = "free_y") +
+    facet_grid(block~treat, nrow = 4, ncol = 3, scales = "free_y") +
     labs(y = "Estimate", 
          x = "Visit", 
          title = title) +
@@ -297,7 +310,7 @@ plot_theta <- function(fits, title){
     theme(legend.position = "bottom")
 }
 
-plot_theta(fits$free, expression(bold(theta)~"over visits 2-5 (unconstrained)"))
+plot_theta(fits, expression(bold(theta)~"over visits 2-5 (unconstrained)"))
 ```
 
 We also provide a tabular summary of the mode estimates in @tbl-params. One notable improvement over the hurdle model considered in the previous report is the appearance of more biologically plausible values of $\hat{\kappa}$. Although some estimates remain negative, they now fall within a tolerable range of zero. Additionally, nearly all estimates of $\delta$ and $\gamma$ are greater than zero, with the exception of the Block C, Visit 2 treatment with a single inoculation point. This exception is likely due to the very low levels of disease observed in that treatment-replicate combination, which may obscure the estimation of the dispersal effect.
