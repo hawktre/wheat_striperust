@@ -54,7 +54,9 @@ forward_fit <- function(blk, trt, vst, mod_dat, dist, kappa_try) {
         fn = neg_loglik,
         gr = neg_grad,
         method = "BFGS",
-        control = list(maxit = 5000, reltol = 1e-6),
+        control = list(maxit = 5000, 
+                       reltol = 1e-6,
+                       parscale = pmax(1, abs(init_theta))),
         y_current = intensity[non_zero],
         y_prev = intensity_prev[non_zero],
         wind_matrix = wind[non_zero, non_zero],
@@ -68,6 +70,13 @@ forward_fit <- function(blk, trt, vst, mod_dat, dist, kappa_try) {
     )
     
     if (!is.null(fit)) {
+      g <- neg_grad(
+        fit$par,
+        y_current = intensity[non_zero],
+        y_prev = intensity_prev[non_zero],
+        wind_matrix = wind[non_zero, non_zero],
+        dist_matrix = dist[non_zero, non_zero])
+      
       results_list[[length(results_list) + 1]] <- list(
         block = blk,
         treat = trt,
@@ -75,6 +84,7 @@ forward_fit <- function(blk, trt, vst, mod_dat, dist, kappa_try) {
         iters = fit$counts[2],
         init_kappa = as.numeric(kappa),
         neg_loglik = fit$value,
+        grad_norm = sqrt(sum(g^2)),
         converged = fit$convergence == 0,
         theta = list(fit$par),
         pi = pi
@@ -86,12 +96,12 @@ forward_fit <- function(blk, trt, vst, mod_dat, dist, kappa_try) {
   if (length(results_list) > 0) {
     visit_dt <- rbindlist(results_list)
     visit_dt <- visit_dt[neg_loglik > -1e6 & converged == T]
-    if (nrow(visit_dt) > 0) {
-      return(visit_dt[which.min(neg_loglik)])
-    }
+    return(visit_dt[which.min(neg_loglik)])
+
+  }else{
+    print("No good fits. Quitting forward fit.")
   }
   
-  return(NULL)
 }
 
 

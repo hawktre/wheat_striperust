@@ -69,4 +69,4 @@ sim_list <- mclapply(1:nsim, function(i) {
 sims <- rbindlist(sim_list)
 
 # Save
-saveRDS(sims, here("DataProcessed/results/simulation/sims_test.rds"))
+saveRDS(sims, here("DataProcessed/results/simulation/sims.rds"))
