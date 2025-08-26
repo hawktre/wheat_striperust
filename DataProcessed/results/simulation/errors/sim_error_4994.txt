@@ -1,0 +1,5 @@
+Simulation failed:
+ℹ In index: 164.
+Caused by error in `if (...) NULL`:
+! missing value where TRUE/FALSE needed
+No traceback available 
