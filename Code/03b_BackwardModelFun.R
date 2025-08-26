@@ -39,7 +39,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
   ][["theta"]][[1]]
   
   max_em_iter <- 1000
-  tol <- 1e-8
+  tol <- 1e-6
   q_track <- numeric(max_em_iter)
   
   # Initial E-step
@@ -61,7 +61,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
         fn = wrapped_obj,
         gr = mstep_grad_em,
         method = "BFGS",
-        control = list(maxit = 1000, reltol = 1e-8),
+        control = list(maxit = 1000, reltol = tol),
         p_mat = p_mat[non_zero, ],
         y_current = intensity[non_zero],
         y_prev = intensity_prev[non_zero],

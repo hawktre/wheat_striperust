@@ -11,8 +11,8 @@
 ##
 ## ---------------------------
 
-user_lib <- file.path(Sys.getenv("HOME"), "R_libs/4.4")
-.libPaths(user_lib)
+# user_lib <- file.path(Sys.getenv("HOME"), "R_libs/4.4")
+# .libPaths(user_lib)
 
 library(here)
 library(data.table)
@@ -27,12 +27,13 @@ source(here("Code/04a_SimFunc.R"))
 forward_fits <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
 
-single_sim(7047, dat = mod_dat, forward_mod = forward_fits, kappa_try = seq(0.25, 2.5, 0.25))
+
+
 # Take args from command line
 args <- commandArgs(trailingOnly = TRUE)
 
 # Set default value of simulations
-nsim <- 10
+nsim <- 100
 # Override with argument if provided
 if (length(args) >= 1) {
   nsim <- as.numeric(args[1])
@@ -68,4 +69,4 @@ sim_list <- mclapply(1:nsim, function(i) {
 sims <- rbindlist(sim_list)
 
 # Save
-saveRDS(sims, here("DataProcessed/results/simulation/sims.rds"))
+saveRDS(sims, here("DataProcessed/results/simulation/sims_test.rds"))

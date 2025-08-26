@@ -54,7 +54,7 @@ forward_fit <- function(blk, trt, vst, mod_dat, dist, kappa_try) {
         fn = neg_loglik,
         gr = neg_grad,
         method = "BFGS",
-        control = list(maxit = 10000, reltol = 1e-8),
+        control = list(maxit = 5000, reltol = 1e-6),
         y_current = intensity[non_zero],
         y_prev = intensity_prev[non_zero],
         wind_matrix = wind[non_zero, non_zero],
@@ -85,7 +85,7 @@ forward_fit <- function(blk, trt, vst, mod_dat, dist, kappa_try) {
   
   if (length(results_list) > 0) {
     visit_dt <- rbindlist(results_list)
-    visit_dt <- visit_dt[neg_loglik > -1e5 & converged == T]
+    visit_dt <- visit_dt[neg_loglik > -1e6 & converged == T]
     if (nrow(visit_dt) > 0) {
       return(visit_dt[which.min(neg_loglik)])
     }

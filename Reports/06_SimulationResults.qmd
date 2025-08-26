@@ -59,7 +59,7 @@ Previous reports for this project have documented the development and implementa
 | 05a_SourceDetection_ModelConsiderations | Modeling framework and derivations for a source-detection model built upon the forward model. |
 | 05b_BackwardModel.qmd | Implementation and results from the Backward Model using the dataset from the present study. |
 
-In the previous report, 05b_BackwardModel, we implemented a framework for source detection (also referred to as a 'backwards model') by leveraging the optimized model parameters from the 'forward' model in an Expectation-Maximization (EM) optimization scheme, and presented preliminary results using the dataset from the present study. 
+In the previous report, 05b_BackwardModel, we implemented a framework for source detection (also referred to as a 'backwards model') by leveraging the optimized model parameters from the 'forward' model in an Expectation-Maximization (EM) optimization scheme, and presented preliminary results using the dataset from the present study.
 
 Here, we check the accuracy and validity of the proposed model in a simulation study. Specifically, we simulate data using the learned parameters from previous reports and test the models ability to recover these parameters and accurately predict the source of disease outbreak.
 
@@ -83,30 +83,30 @@ $$
 \log\left(\frac{\mu_{i,t}}{1-\mu_{i,t}}\right) = \eta_{i,t} = \beta+ \delta y_{i,t-1}(1 - y_{i,t-1}) + \gamma\sum_{j \neq i}\left(y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}\right)
 $$ {#eq-meanmod}
 
-Recall that when we assume that disease intensity $y_{i,t}$ follows a $\text{Beta}(\mu_{i,t}, \phi_t)$ distribution, $\phi_t$ is a nuisance parameter that can likewise be estimated with maximum likelihood methods. Also recall that we established zero-inflation within the experimental framework, as many plants did not have detectable levels of disease at early timepoints. We accounted for this zero-inflation process using a hurdle-model approach in which we estimate the parameter $\hat\pi_{i,t}$ for each block-treatment-visit combination, which characterizes a Bernoulli distribution governing the number of non-infected plants. 
+Recall that when we assume that disease intensity $y_{i,t}$ follows a $\text{Beta}(\mu_{i,t}, \phi_t)$ distribution, $\phi_t$ is a nuisance parameter that can likewise be estimated with maximum likelihood methods. Also recall that we established zero-inflation within the experimental framework, as many plants did not have detectable levels of disease at early timepoints. We accounted for this zero-inflation process using a hurdle-model approach in which we estimate the parameter $\hat\pi_{i,t}$ for each block-treatment-visit combination, which characterizes a Bernoulli distribution governing the number of non-infected plants.
 
-To assess any potential bias in our modeling framework and any potential downstream effects, we ran a simulation study with the following steps. For each block-treatment-visit combination: 
+To assess any potential bias in our modeling framework and any potential downstream effects, we ran a simulation study with the following steps. For each block-treatment-visit combination:
 
-1. Simulate $n = 64$ observations from a $\text{Beta} \left( \hat\mu_i, \hat\phi \right)$ distribution.
-2. Simulate non-diseased plants from a $\text{Bernoulli}(\hat\pi)$. 
-3. Fit the forward model as described in `00a_ModelingConsiderations` to estimate $\boldsymbol{\hat\theta}^{(k)}$. 
-4. Using $\boldsymbol{\hat\theta}^{(k)}$ as an initialization, fit the backward model to estimate $\hat{p}_{i, s}^{(k)}$ --- the probability that plant $i$ was infected by source-group $s$. 
-5. Aggregate elements of $\boldsymbol{\hat p}$ to predict the source of infection as is described in `05b_BackwardModel`. 
-6. Repeat steps 1-5 10,000 times (K = 10,000).
+1.  Simulate $n = 64$ observations from a $\text{Beta} \left( \hat\mu_i, \hat\phi \right)$ distribution.
+2.  Simulate non-diseased plants from a $\text{Bernoulli}(\hat\pi)$.
+3.  Fit the forward model as described in `00a_ModelingConsiderations` to estimate $\boldsymbol{\hat\theta}^{(k)}$.
+4.  Using $\boldsymbol{\hat\theta}^{(k)}$ as an initialization, fit the backward model to estimate $\hat{p}_{i, s}^{(k)}$ --- the probability that plant $i$ was infected by source-group $s$.
+5.  Aggregate elements of $\boldsymbol{\hat p}$ to predict the source of infection as is described in `05b_BackwardModel`.
+6.  Repeat steps 1-5 10,000 times (K = 10,000).
 
-Additional details on model initialization, fitting, and subsequent prediction can be found in the relevant reports as listed in the table above. 
+Additional details on model initialization, fitting, and subsequent prediction can be found in the relevant reports as listed in the table above.
 
 ## Metrics for Model Evaluation
 
-We primarily evaluate the forward model for bias in parameter estimation, and the backward model for its predictive ability. 
+We primarily evaluate the forward model for bias in parameter estimation, and the backward model for its predictive ability.
 
 ### Forward Model
-For the forward model, we specifically measure bias as 
+
+For the forward model, we specifically measure bias as
 
 $$
 \text{Bias}^{(k)} = \boldsymbol{\hat\theta}^{(k)} - \boldsymbol{\hat\theta}
-$$
-That is, we compute the difference between the estimated parameter vector in simulation $k \in K$ and the parameter vector estimated from the experimental data. We additionally kept track of whether the model converged and, if so, how many iterations were required using the quasi-Newtonian optimization algorithm (`optim(method = "BFGS")`). 
+$$ That is, we compute the difference between the estimated parameter vector in simulation $k \in K$ and the parameter vector estimated from the experimental data. We additionally kept track of whether the model converged and, if so, how many iterations were required using the quasi-Newtonian optimization algorithm (`optim(method = "BFGS")`).
 
 ### Backward Model
 
@@ -116,10 +116,9 @@ $$
 \text{score}_i = 1 - \frac{d_{\text{pred}}}{d_{\text{max}}}
 $$
 
-Where $d_{\text{pred}}$ is the distance-based error and $d_{\text{max}}$ is the largest possible distance from the true source within the plot. This method has some advantages, as we can take the average score across various partitions of the experiment. In addition to these metrics, we can use the standard suite of multi-class prediction metrics including accuracy and $F_1$-score. 
+Where $d_{\text{pred}}$ is the distance-based error and $d_{\text{max}}$ is the largest possible distance from the true source within the plot. This method has some advantages, as we can take the average score across various partitions of the experiment. In addition to these metrics, we can use the standard suite of multi-class prediction metrics including accuracy and $F_1$-score.
 
 # Results
-
 
 ```{r}
 library(tidyverse)
@@ -130,7 +129,7 @@ library(kableExtra)
 # Read in the data
 forward <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))
 backward <- readRDS(here("DataProcessed/results/backward_model/backwards_fits.rds"))
-sims <- readRDS(here("DataProcessed/results/simulation/sims.rds"))
+sims <- readRDS(here("DataProcessed/results/simulation/sims_test.rds"))
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
 
 # Summarise convergence results
@@ -142,39 +141,37 @@ converged_forward <- sum(forward_sims$converged.forward)/length(forward_sims$con
 Overall, the forward model showed a high rate of convergence with `r round(converged_forward*100, 1)`% of block-treatment-visit combinations converging across all simulations. Some partitions of the experimental design failed more frequently than others (@tbl-forward_converge).
 
 ```{r}
-#| label: tbl-forward_converge
-#| tbl-cap: "Convergence failures in the forward model, stratified by block, treatment-level, and visit."
-
-#Create summary for those that failed
+# Create summary for those that failed
 forward_sims_failed <- forward_sims %>% 
   filter(!converged.forward) 
 
-forward_sims_failed %>% 
-  group_by(block, treat, visit) %>% 
-  summarise(N = n(),
-            Prop = (n()/10000)*100, .groups = "drop") %>% 
-  arrange(desc(Prop)) %>% 
-  filter(Prop > 1) %>% 
-  kableExtra::kable(digits = 3, col.names = c("Block", "Treatment", "Visit", "Failed to Converge (N)", "Failed to Converge (%)")) %>% 
-  kable_styling()
+# # Create a Kable Table
+# forward_sims_failed %>% 
+#   group_by(block, treat, visit) %>% 
+#   summarise(N = n(),
+#             Prop = (n()/10000)*100, .groups = "drop") %>% 
+#   arrange(desc(Prop)) %>% 
+#   kableExtra::kable(digits = 3, col.names = c("Block", "Treatment", "Visit", "Failed to Converge (N)", "Failed to Converge (%)")) %>% 
+#   kable_styling()
 ```
 
-Some configurations also saw high failure rates, particularly when there was >1 true source. This behavior is somewhat expected, as the backward model assumes one true source. It is perhaps more interesting to look at the failures for the replicates where model assumptions are satisfied (@tbl-back_converge_single).
+Some configurations also saw high failure rates, particularly when there was \>1 true source. This behavior is somewhat expected, as the backward model assumes one true source. It is perhaps more interesting to look at the failures for the replicates where model assumptions are satisfied (@tbl-back_converge_single).
 
 ```{r}
 #| label: tbl-back_converge_single
 #| tbl-cap: "Convergence failures in the backward model (Treatment = 1) stratified by configuration, block, treatment-level, and visit. Results have been filtered to only show replicates which failed to converge in > 1% of simulations."
 
+# Repeat convergence summary for backwards fit
 backward_sims <- sims %>% 
   select(sim, config, block, treat, visit, converged.forward, converged.backward, neg_loglik.backward, em_iters, predicted_source, true_source, dist_error, dist_acc) 
 
+# Table for backwards fits convergence
 backward_sims %>% 
   filter(converged.forward & !converged.backward) %>% 
   group_by(config, block, treat, visit) %>% 
   summarise(N = n(), 
             prop = (n()/10000)*100, .groups = "drop") %>% 
   arrange(desc(prop)) %>% 
-  filter(treat == "1" & prop > 1) %>% 
   kableExtra::kable(digits = 3, col.names = c("Configuration", "Block", "Treatment", "Visit", "Failed to Converge (N)", "Failed to Converge (%)")) %>% 
   kable_styling()
   
@@ -183,9 +180,15 @@ backward_sims %>%
 The replicate "Block C, Treatment 1, Visit 4" showed particularly high rates of failure. It is possible that this failure is due to a weak disease gradient in the experimental data (e.g. there is a large jump from low levels of disease to high levels of disease between visits 3 and 4).
 
 ## Forward Model
-In the forward model, we are primarily concerned with bias in the parameter estimates. 
-```{r}
 
+In the forward model, we are primarily concerned with bias in the parameter estimates. @fig-forward-bias shows the distribution of parameter estimates across all simulations, stratified by block, treatment-level, and visit. The colored point indicates the true value of the parameter.
+
+```{r}
+#| label: fig-forward-bias
+#| fig-cap: "Forward model parameter estimates, stratified by block, treatment-level, and visit. The colored point indicates the true value of the parameter."
+#| fig-width: 10
+
+forward_sims_converged <- forward_sims %>% filter(converged.forward == T) %>% arrange(neg_loglik.forward)
 forward_sims_long <- forward_sims %>%
   filter(converged.forward == T) %>% 
   # Convert each named theta vector into a tibble (with name = param)
@@ -198,8 +201,8 @@ true_params <- forward %>%
   # Unnest into long format
   unnest(theta) %>% 
   select(block, treat, visit, param, value) %>% 
-  mutate(treat = as.numeric(treat),
-         visit = as.numeric(visit))
+  mutate(treat = treat,
+         visit = visit)
   
 forward_sims_and_truth <- left_join(forward_sims_long, true_params, by = c("block", "treat", "visit", "param"), suffix = c(".sim", ".true"))
 
@@ -215,8 +218,24 @@ plot_forward_sims <- function(blk){
   facet_grid(visit_lab ~ treat_lab, scales = "free_y") +
   labs(y = "Estimated value", x = "Parameter", color = "True Value",
        title = paste0("Forward Model Simulated Parameter Estimates (Block ", blk, ")")) +
-  theme_bw()}
+  theme_bw()+
+    theme(legend.position = "none")}
 
 plot_forward_sims("A")
+```
+
+What we see in @fig-forward-bias is that the model is able to consistently ree parameter values with some bias, particularly for the $\kappa$ parameter. The $\phi$ parameter is also estimated with some bias, but this is expected as it is a nuisance parameter. The $\beta$ and $\delta$ parameters are estimated with less bias, and the model appears to be able to recover the true values across all blocks, treatment-levels, and visits.ith small bias for all parameters except for $\gamma$, the parameter governing the effect of the dispersal kernel on disease intensity. It is possible that this behavior is due to the model selection strategy, in which we optimize for 10 proposed initialization values of $\kappa$ and select the fit with the smallest negative log-likelihood. This approach may favor less biased values of $\hat\kappa$ at the expense of large values of $\hat\gamma$. Plots for the remaining blocks can be found in @sec-appendix.
+
+# Appendix {#sec-appendix}
+
+## Simulated Forward Model Parameter Estimates
+```{r}
+#| label: fig-forward-bias-appendix
+#| lightbox: 
+#|   group: forwardparams
+plot_forward_sims("A")
+plot_forward_sims("B")
+plot_forward_sims("C")
+plot_forward_sims("D")
 ```
 

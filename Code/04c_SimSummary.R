@@ -33,7 +33,7 @@ library(here)
 # Read in the data and simulations ----------------------------------------
 forward <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))
 backward <- readRDS(here("DataProcessed/results/backward_model/backwards_fits.rds"))
-sims <- readRDS(here("DataProcessed/results/simulation/sims.rds"))
+sims <- readRDS(here("DataProcessed/results/simulation/sims_test.rds"))
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
 
 # Forward model parameters ------------------------------------------------
@@ -58,9 +58,7 @@ true_params <- forward %>%
   mutate(theta = map(theta, ~ enframe(.x, name = "param", value = "value"))) %>%
   # Unnest into long format
   unnest(theta) %>% 
-  select(block, treat, visit, param, value) %>% 
-  mutate(treat = as.numeric(treat),
-         visit = as.numeric(visit))
+  select(block, treat, visit, param, value) 
   
 forward_sims_and_truth <- left_join(forward_sims_long, true_params, by = c("block", "treat", "visit", "param"), suffix = c(".sim", ".true"))
 
