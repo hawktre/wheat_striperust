@@ -32,7 +32,6 @@ vignettes/*.pdf
 *.rds
 # Text files
 *.csv
-*.txt
 *.dat
 # Excel
 *.xls*
