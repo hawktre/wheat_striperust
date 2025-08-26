@@ -72,3 +72,4 @@ results_merge <- left_join(backward, forward, by = c("block", "treat", "visit"),
   left_join(sources_predicted, by = c("config", "block", "treat", "visit")) 
 
 saveRDS(results_merge, here("DataProcessed/results/backward_model/backward_fits.rds"))
+
