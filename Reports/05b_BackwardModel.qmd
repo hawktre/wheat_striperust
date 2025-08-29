@@ -96,7 +96,9 @@ $$ {#eq-loglik}
 
 where $\mu_{i,t}^{(s)}$ denotes the predicted mean intensity at $i$ assuming infection from source group $s$. We can then apply the Expectation-Maximization (EM) algorithm to estimate the posterior source probabilities $\hat p^{(s)}$. At each iteration:
 
-$\textbf{E-step:}$ Use Bayes' rule to update $$
+$\textbf{E-step:}$ Use Bayes' rule to update 
+
+$$
 \hat p_i^{(s)} =  P(Z_i = s \mid \mathcal{Y}) \propto f(y_{i,t} \mid \mu_{i,t}^{(s)}, \phi_t) \cdot \pi_s
 $$ {#eq-estep}
 

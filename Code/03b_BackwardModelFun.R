@@ -22,7 +22,7 @@ source(here("Code/03a_BackwardGradFun.R"))
 
 # Backward Fit ------------------------------------------------------------
 backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
-  
+
   # Setup
   intensity <- mod_dat$intensity[, blk, trt, vst]
   intensity_prev <- mod_dat$intensity[, blk, trt, as.numeric(vst) - 1]
@@ -70,13 +70,12 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
         group_id = groups[non_zero]
       ),
       error = function(e) {
-        msg <- sprintf(
+        message(sprintf(
           "EM step %d failed in backward_fit [config=%s, block=%s, treat=%s, visit=%s]: %s",
           em_iter, config, blk, trt, vst, conditionMessage(e)
-        )
-        warning(msg)
-        
-        return(NULL)
+        ))
+        browser()
+        stop(e)
       }
     )
     
@@ -124,7 +123,21 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
       p_mat = p_mat
     )
     
+    if (!is.finite(q_val)) {
+      return(data.table(
+        config = config,
+        block = blk,
+        treat = as.numeric(trt),
+        visit = as.numeric(vst),
+        em_iters = em_iter,
+        converged = FALSE,
+        neg_loglik = NA_real_,
+        final_theta = list(theta),
+        p_mat = list(p_mat)
+      ))
+    }
     q_track[em_iter] <- q_val
+    
     
     if (em_iter > 1 && abs(q_track[em_iter] - q_track[em_iter - 1]) < tol) {
       break

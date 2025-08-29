@@ -102,13 +102,25 @@ single_sim <- function(sim_id, dat, forward_mod, kappa_try, output_dir = here("D
     return(results_merge)
     
   }, error = function(e) {
-    err_file <- file.path(output_dir, paste0("sim_error_", sim_id, ".txt"))
-    writeLines(c(
-      "Simulation failed:",
-      conditionMessage(e),
-      capture.output(traceback(max.lines = 10))
-    ), con = err_file)
-    return(NULL)
+    # rich, reproducible log
+    err_file <- file.path(output_dir, sprintf("sim_error_%s.txt", sim_id))
+    cat(
+      "Simulation failed:\n",
+      "sim_id: ", sim_id, "\n",
+      "message: ", conditionMessage(e), "\n",
+      "class: ", paste(class(e), collapse = ", "), "\n",
+      "call: ", deparse(conditionCall(e)), "\n",
+      file = err_file, append = FALSE, sep = ""
+    )
+    
+    # capture the call stack for later interactive debugging
+    dump_name <- file.path(output_dir, sprintf("sim_dump_%s", sim_id))
+    dump.frames(dump_name, to.file = TRUE)
+    
+    cat("\nDumped frames to: ", dump_name, ".rda\n", file = err_file, append = TRUE)
+    
+    # if you’re in an interactive session, stop so you SEE the error
+    stop(e)
   })
 }
 

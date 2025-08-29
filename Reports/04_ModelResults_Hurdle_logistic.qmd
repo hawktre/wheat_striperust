@@ -19,6 +19,7 @@ author:
   - name: Shirshendu Chatterjee
     affiliations:
       - ref: nyu
+    degrees: PhD
   - name: Sharmodeep Bhattacharyya
     affiliations:
       - ref: osu
@@ -337,51 +338,47 @@ We also visualize predictions and deviance residuals to get an idea of the predi
 library(sf)
 library(ggpubr)
 #Create a dataframe with all of the predicted results and true values
-df <- map_dfr(names(fits$free$mod_dat), function(plot_id) {
-  plot_obj <- fits$free$mod_dat[[plot_id]]
-  
-  map_dfr(names(plot_obj), function(visit) {
-    visit_obj <- plot_obj[[visit]]
-    
-    n <- length(visit_obj$y_cur)  # assumes y_cur and y_pred are same length
-    
-    tibble(
-      plot_id = rep(plot_id, n),
-      visit = rep(visit, n),
-      y_cur = visit_obj$y_cur,
-      y_prev = visit_obj$y_prev,
-      y_pred = visit_obj$y_pred,
-      plant_id = visit_obj$plant_id,
-      X1 = visit_obj$X1,
-      X2 = visit_obj$X2,
-      resid = visit_obj$dev_resid
-    )
-  })
-})
+df <- fits %>% 
+  select(block, treat, visit, fitted) %>% 
+  unnest_longer(fitted, indices_to = "plant_id") %>% 
+  mutate(plant_id = as.numeric(plant_id),
+         treat = as.numeric(treat))
+
+stripe_long <- stripe %>% 
+  select(block, inoculum_total, visit, plant_num, intensity, east, north) %>% 
+  st_as_sf(coords = c("east", "north")) %>% 
+  mutate(intensity = intensity/100,
+         visit = as.character(parse_number(visit)),
+         plant_num = as.numeric(plant_num)) %>% 
+  rename(treat = inoculum_total,
+         plant_id = plant_num)
 
 #Join with unique plant id's and spatial coordinates
-plot_df <- left_join(df, stripe %>% select(plant_id, north, east) %>% distinct(), by = c("plant_id"))
-
-#Pivot longer for plotting
-df_long <- plot_df %>% 
-  pivot_longer(cols = c(y_cur, y_pred), names_to = "type", values_to = "intensity") %>% 
-  mutate(type = if_else(type == "y_pred", "Predicted", "True"),
-         plant_num = parse_number(sapply(str_split(plant_id, "_", n = 2), `[`, 2))) %>% 
-  st_as_sf(coords = c("east", "north"))
+plot_df <- left_join(df, stripe_long, by = c("block", "treat", "visit", "plant_id")) %>% 
+  select(block, treat, visit, plant_id, fitted, intensity, geometry) %>% 
+  st_as_sf() %>% 
+  rename(predicted = fitted,
+         true = intensity) %>% 
+  pivot_longer(cols = c("predicted", "true"), values_to = "intensity", names_to = "type")
 
 #read in inoculation spatial data
-inoc_sp <- readRDS(here("DataProcessed/experimental/inoc_sp.rds"))
+inoc_sp <- readRDS(here("DataProcessed/experimental/inoc_sp.rds")) %>% 
+  select(block, inoculum_total, inoculum_num, geometry) %>% 
+  rename(treat = inoculum_total,
+         id = inoculum_num)
 
-#Load up color palatte
-colors <- wesanderson::wes_palette(name = "Zissou1", n = 5, type = "continuous")
+
 
 #Function to make plots 
-pred_spplot <- function(exp.dat, inoc.dat, plot_id){
-  # Filter for the block we want
-  stripe.dat <- exp.dat %>% filter(plot_id == {{plot_id}})
-  inoc.dat <- inoc.dat %>% filter(plot_inoc_id == plot_id)
+pred_spplot <- function(blk, trt){
+  #Load up color palatte
+  colors <- wesanderson::wes_palette(name = "Zissou1", n = 5, type = "continuous")
   
-  #Plot using raw intesity to color
+  # Filter for the block we want
+  stripe.dat <- plot_df %>% filter(block == blk, treat == trt)
+  inoc.dat <- inoc_sp %>% filter(block == blk, treat == trt)
+  
+  #Plot using raw intensity to color
   ggplot()+
     geom_sf(data = stripe.dat, 
             aes(color = intensity), 
@@ -392,15 +389,15 @@ pred_spplot <- function(exp.dat, inoc.dat, plot_id){
     facet_grid(rows = vars(type), cols = vars(visit))+
     labs(fill = "",
          color = "Disease Intensity",
-         title = paste0("Predicted vs. True Intensity (Plot ", plot_id, ")"))+
+         title = paste0("Predicted vs. True Intensity (Plot ", blk, trt, ")"))+
     theme_grey()+
     scale_color_gradient(low = colors[1], high = colors[4])+
     theme(legend.position = "bottom")
 }
 
-plt_b1 <- pred_spplot(df_long, inoc_sp, plot_id = "B1")
-plt_b2 <- pred_spplot(df_long, inoc_sp, plot_id = "B2")
-plt_b4 <- pred_spplot(df_long, inoc_sp, plot_id = "B4")
+plt_b1 <- pred_spplot(blk = "B", trt = 1)
+plt_b2 <- pred_spplot(blk = "B", trt = 2)
+plt_b4 <- pred_spplot(blk = "B", trt = 4)
 
 ggarrange(plotlist = list(plt_b1, plt_b2, plt_b4), nrow = 3, ncol = 1)
 ```
@@ -414,38 +411,27 @@ We can also examine the deviance residuals [@ferrari2004a] for the same block (@
 #| fig-width: 8
 
 
-df_resid <- map_dfr(names(fits$free$mod_dat), function(plot_id) {
-  plot_obj <- fits$free$mod_dat[[plot_id]]
-  
-  map_dfr(names(plot_obj), function(visit) {
-    visit_obj <- plot_obj[[visit]]
-    
-    n <- length(visit_obj$dev_resid)  # assumes y_cur and y_pred are same length
-    
-    tibble(
-      plot_id = rep(plot_id, n),
-      visit = rep(visit, n),
-      plant_id = visit_obj$plant_id,
-      y_pred = visit_obj$y_pred,
-      dev_resid = visit_obj$dev_resid
-    )
-  })
-})
-df_resid_plt <-df_resid %>% 
-  mutate(block = substr(plot_id, 1, 1),
-         inoc = substr(plot_id, 2, 2),
-         plant_num = parse_number(sapply(str_split(df_resid$plant_id, "_", n = 2), `[`, 2)))
+df_resid <- fits %>% 
+  select(block, treat, visit, resid) %>% 
+  unnest_longer(resid, indices_to = "plant_id") %>% 
+  mutate(plant_id = as.numeric(plant_id),
+         treat = as.numeric(treat))
+
+df_resid_plt <- left_join(df, df_resid, by = c("block", "treat", "visit", "plant_id"))
+
+df_resid_sp <- left_join(df_resid_plt, stripe_long, by = c("block", "treat", "visit", "plant_id")) %>% 
+  st_as_sf()
   
 df_resid_plt %>% 
 filter(block == "B") %>% 
-  ggplot(aes(x = y_pred, y = dev_resid)) +
+  ggplot(aes(x = fitted, y = resid)) +
   geom_point() +
   geom_hline(yintercept = 0, linetype = "dashed") +
-  geom_label(data = function(d) filter(d, abs(dev_resid) > 3),
-            aes(label = plant_num), 
+  geom_label(data = function(d) filter(d, abs(resid) > 3),
+            aes(label = plant_id), 
             vjust = 1.5, 
             size = 3) +
-  facet_grid(plot_id ~ visit) + 
+  facet_grid(treat ~ visit) + 
   labs(y = "Deviance Residual", x = "Predicted Intensity")
 ```
 
@@ -459,29 +445,27 @@ From @fig-resid, we see no particular pattern in the residuals. It is note-worth
 
 library(ggrepel)
 # Filter for the block we want
-stripe.dat.B <- df_long %>% filter(plot_id %in% c("B1", "B2", "B4"))
-inoc.dat.B <- inoc_sp %>% filter(plot_inoc_id %in% c("B1", "B2", "B4")) %>% rename("plot_id" = plot_inoc_id)
-  
+stripe.dat.B <- df_resid_sp %>% filter(block == "B", visit %in% c(2, 3))
+inoc.dat.B <- inoc_sp %>% filter(block == "B")
+
+intensity_cols <- wesanderson::wes_palette(name = "Zissou1", n = 5, type = "continuous") 
   #Plot using raw intesity to color
-  ggplot(data = stripe.dat.B %>% filter(visit %in% c("visit2", "visit3")))+
-    geom_sf(aes(color = resid), 
-            size = 3)+
-    geom_sf_label(data = stripe.dat.B %>% 
-                   filter(visit %in% c("visit2", "visit3"),
-                          abs(resid) > 3),
-                 aes(label = plant_num),
+  ggplot()+
+    geom_sf(data = stripe.dat.B , aes(color = resid), size = 3)+
+    geom_sf_label(data = stripe.dat.B %>% filter(abs(resid) > 3),
+                 aes(label = plant_id),
                  size = 2, 
                  nudge_x = 1.5,
                  nudge_y = -1)+
     geom_sf(data = inoc.dat.B, 
-            aes( fill= "Inoculation Point"), 
+            aes(fill = "Inoculation Point"), 
             shape = 23, size = 3, alpha = 0.7)+
-    facet_grid(rows = vars(plot_id), cols = vars(visit))+
+    facet_grid(rows = vars(treat), cols = vars(visit))+
     labs(fill = "",
          color = "Deviance Residual",
          title = paste0("Deviance Residuals in Space (Block B)"))+
     theme_grey()+
-    scale_color_gradient(low = colors[1], high = colors[5])+
+    scale_color_gradient(low = intensity_cols[1], high = intensity_cols[5])+
     theme(legend.position = "right")
 ```
 @fig-highresid visualizes residual values in space and shows us that those plants who are severely underpredicted are often those that are closest to the sources. 
@@ -507,9 +491,9 @@ We also note that the largest deviance residuals tend to occur in plants located
 #| fig-height: 15
 #| fig-width: 10
 ## Block A
-plt_a1 <- pred_spplot(df_long, inoc_sp, plot_id = "A1")
-plt_a2 <- pred_spplot(df_long, inoc_sp, plot_id = "A2")
-plt_a4 <- pred_spplot(df_long, inoc_sp, plot_id = "A4")
+plt_a1 <- pred_spplot(blk = "A", trt = 1)
+plt_a2 <- pred_spplot(blk = "A", trt = 2)
+plt_a4 <- pred_spplot(blk = "A", trt = 4)
 
 ggarrange(plotlist = list(plt_a1, plt_a2, plt_a4), nrow = 3, ncol = 1)
 ```
@@ -517,14 +501,12 @@ ggarrange(plotlist = list(plt_a1, plt_a2, plt_a4), nrow = 3, ncol = 1)
 ```{r}
 #| fig-width: 10
 ### Residuals
-df_resid %>% 
-  mutate(block = substr(plot_id, 1, 1),
-         inoc = substr(plot_id, 2, 2)) %>% 
+df_resid_sp %>% 
   filter(block == "A") %>% 
-  ggplot(aes(x = y_pred, y = dev_resid))+
+  ggplot(aes(x = fitted, y = resid))+
   geom_point()+
   geom_hline(yintercept = 0, linetype  ="dashed")+
-  facet_grid(plot_id~visit) + 
+  facet_grid(treat~visit) + 
   labs(y = "Deviance Residual", x = "Predicted Intensity")
 ```
 
@@ -533,23 +515,21 @@ df_resid %>%
 ```{r}
 #| fig-height: 15
 #| fig-width: 10
-plt_c1 <- pred_spplot(df_long, inoc_sp, plot_id = "C1")
-plt_c2 <- pred_spplot(df_long, inoc_sp, plot_id = "C2")
-plt_c4 <- pred_spplot(df_long, inoc_sp, plot_id = "C4")
+plt_c1 <- pred_spplot(blk = "C", trt = 1)
+plt_c2 <- pred_spplot(blk = "C", trt = 2)
+plt_c4 <- pred_spplot(blk = "C", trt = 4)
 
 ggarrange(plotlist = list(plt_c1, plt_c2, plt_c4), nrow = 3, ncol = 1)
 ```
 
 ```{r}
 #| fig-width: 10
-df_resid %>% 
-  mutate(block = substr(plot_id, 1, 1),
-         inoc = substr(plot_id, 2, 2)) %>% 
+df_resid_sp %>% 
   filter(block == "C") %>% 
-  ggplot(aes(x = y_pred, y = dev_resid))+
+  ggplot(aes(x = fitted, y = resid))+
   geom_point()+
   geom_hline(yintercept = 0, linetype  ="dashed")+
-  facet_grid(plot_id~visit) + 
+  facet_grid(treat~visit) + 
   labs(y = "Deviance Residual", x = "Predicted Intensity")
 ```
 
@@ -558,127 +538,20 @@ df_resid %>%
 ```{r}
 #| fig-height: 15
 #| fig-width: 10
-plt_d1 <- pred_spplot(df_long, inoc_sp, plot_id = "D1")
-plt_d2 <- pred_spplot(df_long, inoc_sp, plot_id = "D2")
-plt_d4 <- pred_spplot(df_long, inoc_sp, plot_id = "D4")
+plt_d1 <- pred_spplot(blk = "D", trt = 1)
+plt_d2 <- pred_spplot(blk = "D", trt = 2)
+plt_d4 <- pred_spplot(blk = "D", trt = 4)
 
 ggarrange(plotlist = list(plt_d1, plt_d2, plt_d4), nrow = 3, ncol = 1)
 ```
 
 ```{r}
 #| fig-width: 10
-df_resid %>% 
-  mutate(block = substr(plot_id, 1, 1),
-         inoc = substr(plot_id, 2, 2)) %>% 
+df_resid_sp %>% 
   filter(block == "D") %>% 
-  ggplot(aes(x = y_pred, y = dev_resid))+
+  ggplot(aes(x = fitted, y = resid))+
   geom_point()+
   geom_hline(yintercept = 0, linetype  ="dashed")+
-  facet_grid(plot_id~visit) + 
+  facet_grid(treat~visit) + 
   labs(y = "Deviance Residual", x = "Predicted Intensity")
-```
-
-## Gamma restriction sensitivity assessmen
-
-Similarly to the previous report, we explored the possibility of constrained optimization in order to avoid maximization of $\gamma$ and $\kappa$ on the boundary space. The below plot examines estimate behavior under various values of $\gamma_{\text{max}}$ with the constraint that $\kappa > 0$ and $\phi > 0$. 
-
-```{r}
-#| fig-height: 12
-#| fig-width: 10
-#| fig-cap: "Models were fit with constraints on the dispersal parameter of 100, 200, 500, 1000, 2000, and 50000."
-
-# Combine all gamma_max fits into one long tibble
-theta_long_all <- map_dfr(
-  .x = fits$constrained,
-  .f = function(fits) {
-    bind_rows(fits[['fits']]) %>%
-      select(plot_id, visit, theta) %>%
-      unnest_wider(theta)  # beta, delta, gamma, etc.
-  },
-  .id = "gamma_max"  # This will record which gamma_max level this came from
-) %>%
-  pivot_longer(
-    cols = c(beta, delta, gamma, kappa, phi),
-    names_to = "parameter",
-    values_to = "estimate"
-  ) %>%
-  mutate(
-    visit_num = as.numeric(str_extract(visit, "\\d+"))
-  )
-
-theta_long_all %>%
-  dplyr::mutate(gamma_max = parse_number(gamma_max)) %>% 
-  ggplot(aes(x = visit_num, y = estimate, color = parameter)) +
-  geom_point(size = 2) +
-  geom_line(linewidth = 1) +
-  facet_grid(plot_id ~ gamma_max, scales = "free_y") +
-  labs(y = "Estimate", x = "Visit", title = expression(bold(theta) ~ "by gamma_max constraint")) +
-  scale_color_manual(
-    name = "Parameter",
-    values = c("beta" = greek_cols[1], "delta" = greek_cols[2], "gamma" = greek_cols[3],
-               "kappa" = greek_cols[4], "phi" = greek_cols[5]),
-    labels = c(
-      beta = expression(beta),
-      delta = expression(delta),
-      gamma = expression(gamma),
-      kappa = expression(kappa),
-      phi = expression(phi)
-    )
-  ) +
-  theme(legend.position = "bottom")
-```
-
-## Bias Quantification
-```{r}
-#| label: fig-bias
-#| fig-cap: "Parameter bias under contrained optimization ($\\gamma_\\text{max} = 200$), computed as $\\theta_{200} - \\theta_{Inf}$."
-#| fig-height: 8
-#| fig-width: 8
-
-fits <- c(list("gamma_free" = fits$free),
-                 fits$constrained)
-
-theta_constrained <- map2_dfr(.x = fits[names(fits) != "gamma_free"], .y = names(fits[names(fits) != "gamma_free"]), .f = function(fit, name){
-  bind_rows(fit[['fits']]) %>% 
-    mutate(gamma_max = name) %>% 
-    select(gamma_max, plot_id, visit, theta) %>% 
-    unnest_longer(theta)
-})
-
-
-theta_free <- bind_rows(fits$gamma_free$fits) %>% 
-  mutate(gamma_max = "gamma_free") %>% 
-  select(gamma_max, plot_id, visit, theta) %>% 
-    unnest_longer(theta)
-
-
-bias_df <- left_join(theta_constrained, theta_free, by = c("plot_id", "visit", "theta_id"), suffix = c(".constrained", ".free")) %>% 
-  mutate(bias = theta.constrained - theta.free,
-         visit_num = parse_number(visit)) 
-
-bias_plt <- function(constraint, bias_dat){
-  bias_dat %>% 
-    filter(gamma_max.constrained == constraint,
-           theta_id != "gamma") %>% 
-    ggplot(aes(x = visit_num, y = bias, colour = theta_id))+
-    geom_point(size = 2) +
-    geom_line(linewidth = 1) +
-    facet_wrap(~plot_id, scales = "free_y", nrow = 4) +
-    labs(y = "Bias", x = "Visit", title = expression("Bias of" ~ bold(theta) ~ " (" ~ gamma[max] ~"= 200)")) +
-    scale_color_manual(
-      name = "Parameter",
-      values = c("beta" = greek_cols[1], "delta" = greek_cols[2], "gamma" = greek_cols[3],
-                 "kappa" = greek_cols[4], "phi" = greek_cols[5]),
-      labels = c(
-        beta = expression(beta),
-        delta = expression(delta),
-        gamma = expression(gamma),
-        kappa = expression(kappa),
-        phi = expression(phi)
-      )
-    ) +
-    theme(legend.position = "bottom")}
-
-bias_plt("gamma_200", bias_df)
-  
 ```
