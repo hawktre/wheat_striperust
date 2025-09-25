@@ -224,11 +224,12 @@ ggwindrose(speed = wind_filter$speed,
            n_directions = 16,
            facet = factor(wind_filter$period),
            n_col = 4)+
-  labs(fill = "Wind Speed (m/s)",
-       title = "Stratified Wind Summary")+
+  labs(fill = "Wind Speed (m/s)")+
   theme(legend.position = "bottom") + 
   scale_fill_manual(values = wind_colors)
-```
+
+ggsave("WindSummary_Stratified.png", path = here("Reports/CAS_poster/"), width = 12, height = 4, units = "in")
+F```
 
 ```{r}
 #| label: tbl-periods

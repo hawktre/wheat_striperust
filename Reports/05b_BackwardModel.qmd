@@ -104,7 +104,8 @@ $$ {#eq-estep}
 
 Where $\pi_s$ is the prior probability that source group $G_s$ is responsible for infection at unit $i$. We assume a uniform prior over all $S$ source groups $( \pi_s = 1/S \text{ for all } s)$.
 
-$\textbf{M-step:}$ Maximize the expected complete-data log-likelihood $$
+$\textbf{M-step:}$ Maximize the expected complete-data log-likelihood 
+$$
 Q(\boldsymbol\theta) = \sum_{i=1}^n \sum_{s=1}^S \hat p_i^{(s)} \cdot \log f(y_{i,t} \mid \mu_{i,t}^{(s)}, \phi_t)
 $$ {#eq-mstep}
 
@@ -176,6 +177,7 @@ When we have $N$ predictions, the distance-weighted accuracy is then given by
 $$
 \frac{1}{N}\sum_{i = 1}^N \text{score}_i
 $$
+
 This will provide a more realistic interpretation of model accuracy, particularly in configurations with finer grids (e.g. 2x4, 4x2, 4x4). 
 
 ## Sensitivity Analysis
@@ -297,6 +299,8 @@ for (config in unique(edges$configuration)) {
 }
 
 spat_plots[["A1_stripe_4"]]
+
+ggsave("A1_Results.png", path = here("Reports/CAS_poster/"), width = 10, height = 4, units = "in")
 spat_plots[["B1_stripe_4"]]
 spat_plots[["C1_stripe_4"]]
 spat_plots[["D1_stripe_4"]]
@@ -317,6 +321,7 @@ What we observe from @fig-2by2 is the consistent ability of the model to identif
 #|   group: single4by4
 
 spat_plots[["A1_stripe_16"]]
+ggsave("A1_results16.png", path = here("Reports/CAS_poster/"), width = 10, height = 4, units = "in")
 spat_plots[["B1_stripe_16"]]
 spat_plots[["C1_stripe_16"]]
 spat_plots[["D1_stripe_16"]]
@@ -350,9 +355,11 @@ mle_metrics <- left_join(mle_metrics, dist_acc_mle, by = "configuration")%>%
   pivot_wider(names_from = .metric, values_from = .estimate)
 
  # Create the table 
-mle_metrics %>% as.data.frame() %>% 
+mle_metrics %>% 
+  select(configuration, dist_acc, accuracy) |> 
+  as.data.frame() %>% 
   mutate(configuration = c("2 x 2", "2 x 4", "4 x 2", "4 x 4")) %>% 
-  kable(col.names = c("Configuration", "Accuracy (Distance-Weighted)", "Accuracy (Unweighted)", "Cohen's-Kappa", "$$F_1$$"), digits = 3)
+  kable(col.names = c("Configuration", "Accuracy (Distance-Weighted)", "Accuracy (Unweighted)"), digits = 3, format = "latex")
    
 
 ```
@@ -405,8 +412,8 @@ left_join(mle_iters, sensitivity_iters, by = c("configuration", "plot_id", "visi
   labs(x = "EM Iterations", y = "Count", fill = "Initialization")+
   scale_fill_manual(values = discrete_cols)+
   theme_classic()
-
 ```
+
 @fig-emiters shows that the grid-search (naive) initialization scheme has a slightly higher right skew for the number of EM-iterations until convergence, with some notable outliers. From a practical standpoint--runtimes are similar for the two initialization strategies. We compare parameter estimates in @fig-params. 
 
 ```{r}

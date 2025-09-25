@@ -224,6 +224,8 @@ grid %>%
   facet_wrap(~grid_type, nrow = 1)+
   labs(x = "E", y = "N")+
   theme_classic()
+
+ggsave("prior_grid.png", path = here("Reports/CAS_poster/"), width = 10, height = 4, unit = "in")
 ```
 
 At each iteration, we will specifically update $\hat\mu_{i,t}^{(s)}$ as

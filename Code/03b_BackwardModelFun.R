@@ -164,7 +164,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
 
 # Backward_Preds ----------------------------------------------------------
 source_pred <- function(config, blk, trt, vst, p_mat, mod_dat) {
-  
+  browser()
   # Ensure groups is a factor with levels = 1:n_groups
   groups <- as.factor(mod_dat$groups[,config])
   levels(groups) <- sort(unique(groups))

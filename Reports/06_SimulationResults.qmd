@@ -123,7 +123,8 @@ $$ {#eq-estep}
 
 Where $\pi_s$ is the prior probability that source group $s$ is responsible for infection at unit $i$. We assume a uniform prior over all $S$ source groups $( \pi_s = 1/S \text{ for all } s)$.
 
-$\textbf{M-step:}$ Maximize the expected complete-data log-likelihood $$
+$\textbf{M-step:}$ Maximize the expected complete-data log-likelihood 
+$$
 Q(\boldsymbol\theta) = \sum_{i=1}^n \sum_{s=1}^S \hat p_i^{(s)} \cdot \log f(y_{i,t} \mid \mu_{i,t}^{(s)}, \phi_t)
 $$ {#eq-mstep}
 
@@ -434,6 +435,27 @@ sp_tbl <- function(blk){
 }
 
 sp_tbl(blk = "A")
+
+sp_tbl_short <- function(blk){
+  truth_sp_summary %>% 
+  filter(block == blk, grid_type == "4 x 4") %>% 
+  select(visit, mean_acc, incorrect_preds, mean_error, mean_error_miss) %>% 
+  st_drop_geometry() %>% 
+  arrange(visit) %>% 
+  kable(digits = 3, col.names = c("Visit", "Dist. Acc.", "Incorrect Predicitons", "Error (m)", "Miss Error (m)"), format = "latex") 
+}
+
+sp_tbl_short(blk = "A")
+```
+```{r}
+truth_sp_summary %>% 
+  group_by(grid_type, visit) %>% 
+  arrange(grid_type, visit) %>% 
+  summarise(mean_acc = mean(mean_acc),
+            mean_error = mean(mean_error),
+            mean_error_miss = mean(mean_error_miss), .groups = "drop") %>% 
+  kable(digits = 4, col.names = c("Configuration", "Visit", "Avg. Distance-weighted Accuracy","Avg. Error (m)", "Avg. Miss Error (m)")) %>% 
+  kableExtra::kable_styling(bootstrap_options = c("hover", "condensed", "responsive"))
 ```
 
 # Discussion
