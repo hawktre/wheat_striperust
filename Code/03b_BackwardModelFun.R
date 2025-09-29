@@ -18,10 +18,10 @@ library(here)
 
 ## Read in the needed functions
 source(here("Code/03a_BackwardGradFun.R"))
-
+source(here("Code/02a_ForwardGradFun.R"))
 
 # Backward Fit ------------------------------------------------------------
-backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
+backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits, kappa = NULL) {
 
   # Setup
   intensity <- mod_dat$intensity[, blk, trt, vst]
@@ -33,10 +33,20 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
   n_groups <- readr::parse_number(config)
   prior <- 1 / n_groups
   
-  # Starting values from forward fit
-  theta <- forward_fits[
+  # Starting values from forward fit (grid search or MLE approach)
+  if(!is.null(kappa)){
+    theta <- initialize_theta(y_cur = intensity[non_zero], 
+                                   y_prev = intensity_prev[non_zero], 
+                                   wind_mat = wind[non_zero, non_zero], 
+                                   dist_mat = dist[non_zero, non_zero], 
+                                   kappa_try = as.numeric(kappa),
+                                   d_0 = 0.01)
+  }else{
+    theta <- forward_fits[
     block == blk & treat == as.numeric(trt) & visit == as.numeric(vst)
   ][["theta"]][[1]]
+  }
+  
   
   max_em_iter <- 1000
   tol <- 1e-6
@@ -85,6 +95,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
         block = blk,
         treat = as.numeric(trt),
         visit = as.numeric(vst),
+        kappa = kappa,
         em_iters = em_iter,
         converged = FALSE,
         neg_loglik = NA_real_,
@@ -129,6 +140,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
         block = blk,
         treat = as.numeric(trt),
         visit = as.numeric(vst),
+        kappa = kappa,
         em_iters = em_iter,
         converged = FALSE,
         neg_loglik = NA_real_,
@@ -152,6 +164,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
     block = blk,
     treat = trt,
     visit = vst,
+    kappa = kappa,
     em_iters = em_iter,
     converged = em_iter < max_em_iter,
     neg_loglik = q_track[em_iter],
@@ -164,7 +177,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
 
 # Backward_Preds ----------------------------------------------------------
 source_pred <- function(config, blk, trt, vst, p_mat, mod_dat) {
-  browser()
+  
   # Ensure groups is a factor with levels = 1:n_groups
   groups <- as.factor(mod_dat$groups[,config])
   levels(groups) <- sort(unique(groups))

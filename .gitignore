@@ -33,6 +33,8 @@ vignettes/*.pdf
 # Text files
 *.csv
 *.dat
+*.doc
+*.docx
 # Excel
 *.xls*
 # SAS
