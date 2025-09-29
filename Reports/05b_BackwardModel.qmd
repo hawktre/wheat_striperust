@@ -195,27 +195,25 @@ library(tidyverse)
 library(here)
 library(sf)
 
-mle_results <- readRDS(here("DataProcessed/results/backward_model/mle_results.rds"))
+mle_results <- readRDS(here("DataProcessed/results/backward_model/backward_fits.rds"))
 clusters <- readRDS(here("DataProcessed/experimental/clusters.rds"))
 inocs <- readRDS(here("DataProcessed/experimental/inoc_sp.rds"))
 
 
 # Model selection ---------------------------------------------------------
 ## Compute BIC
-fit_df <- mle_results$params %>% 
-  select(-c(param, value)) %>% 
-  distinct() %>% 
-  mutate(n_mix = parse_number(configuration),
+fit_df <- mle_results |> 
+  mutate(n_mix = parse_number(config),
          bic_k = (n_mix - 1 + 5),
-         bic = bic_k * log(64) - 2 * log(abs(final_neg_loglik)))
+         bic = bic_k * log(64) - 2 * abs(neg_loglik.backward))
 
 ## Subset the best models
 best_mod <- fit_df %>%
-  group_by(plot_id, visit) %>%
+  group_by(block, treat, visit) %>%
   slice_min(order_by = bic, n = 1, with_ties = FALSE) %>%
   ungroup() %>% 
-  mutate(configuration = factor(configuration, 
-                                levels = c("stripe_4", "stripe_8h", "stripe_8v", "stripe_16"), 
+  mutate(configuration = factor(config, 
+                                levels = c("4", "8h", "8v", "16"), 
                                 labels = c("2 x 2", "2 x 4", "4 x 2", "4 x 4")))
 ```
 
