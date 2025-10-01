@@ -125,17 +125,21 @@ library(tidyverse)
 library(here)
 library(sf)
 
-clusters <- readRDS(here("DataProcessed/experimental/clusters.rds"))
+grid <- readRDS(here("DataProcessed/experimental/grids_sp.rds"))
 
-grid <- bind_rows(clusters$stripe_4$grid,
-                  clusters$stripe_8h$grid,
-                  clusters$stripe_8v$grid,
-                  clusters$stripe_16$grid)
+disease_dat <- readRDS(here("DataProcessed/experimental/stripe_clean.rds"))
 
+disease_sp <- disease_dat |> 
+  select(north, east) |> 
+  distinct() |> 
+  st_as_sf(coords = c("east", "north"))
 
 grid %>% 
+  bind_rows() |> 
+  filter(grid_type == "8 x 8") |> 
   ggplot()+
   geom_sf(fill = "transparent")+
+  geom_sf(data = disease_sp) + 
   geom_sf_text(aes(label = grid_id))+
   facet_wrap(~grid_type, nrow = 1)+
   labs(x = "E", y = "N")+
@@ -240,11 +244,13 @@ It is perhaps most practical to work with the scenarios in which there is a sing
 grid <- bind_rows(clusters$stripe_4$grid,
                   clusters$stripe_8h$grid,
                   clusters$stripe_8v$grid,
-                  clusters$stripe_16$grid) %>% 
+                  clusters$stripe_16$grid, 
+                  clusters$stripe_64$grid) %>% 
   mutate(configuration = case_when(grid_type == "2 x 2" ~ "stripe_4",
                                    grid_type == "4 x 2" ~ "stripe_8h",
                                    grid_type == "2 x 4" ~ "stripe_8v",
-                                   grid_type == "4 x 4" ~ "stripe_16")) %>% 
+                                   grid_type == "4 x 4" ~ "stripe_16",
+                                   grid_type == "8 x 8" ~ "stripe_")) %>% 
   rename("geometry" = ".")
 
 #Create single spatial centroid object

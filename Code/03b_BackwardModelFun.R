@@ -84,7 +84,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits, kappa = N
           "EM step %d failed in backward_fit [config=%s, block=%s, treat=%s, visit=%s]: %s",
           em_iter, config, blk, trt, vst, conditionMessage(e)
         ))
-        browser()
+        
         stop(e)
       }
     )

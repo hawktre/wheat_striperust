@@ -94,8 +94,31 @@ get_wind_mat <- function(first_day, last_day, wind, dir.mat){
 
 
 # Create spatial Grid (For backward Model) --------------------------------
-get_grid <- function(dat, n_row, n_col, name){
-  st_make_grid(dat, n = c(n_col, n_row), what = "polygons") %>%
-    st_sf(grid_id = seq_len(length(.))) %>% 
-    mutate(grid_type = name)
+get_grid <- function(pts_sf, nrow_pts, ncol_pts, name) {
+  
+  stopifnot(inherits(pts_sf, "sf") && sf::st_geometry_type(pts_sf)[1] == "POINT")
+  coords <- st_coordinates(pts_sf)
+  # infer spacing (median is robust to tiny jitter)
+  dx <- median(diff(sort(unique(coords[,1]))))
+  dy <- median(diff(sort(unique(coords[,2]))))
+  if (is.na(dx) || dx <= 0) stop("can't infer dx. Are x coordinates identical or only one column?")
+  if (is.na(dy) || dy <= 0) stop("can't infer dy. Are y coordinates identical or only one row?")
+  # define offset so that polygon centers == point centers
+  offset_x <- min(coords[,1]) - dx/2
+  offset_y <- min(coords[,2]) - dy/2
+
+  # build grid covering bbox
+  bbox_sfc <- st_as_sfc(st_bbox(pts_sf))
+  grid <- st_make_grid(bbox_sfc,
+                       cellsize = c(dx * nrow_pts, dy * ncol_pts),
+                       offset = c(offset_x, offset_y),
+                       what = "polygons") %>%
+    st_sf(grid_id = seq_along(.), name = name, geometry = .)
+
+  # assign points to grid cells
+  hits <- st_intersects(pts_sf, grid)
+  gid <- map_int(hits, ~ if(length(.x)) .x[1] else NA_integer_)
+  pts_out <- pts_sf %>% mutate(grid_id = gid)
+
+  list(points = pts_out, grid = grid)
 }

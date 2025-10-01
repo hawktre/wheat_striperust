@@ -22,7 +22,7 @@ library(tidyverse)
 library(here)
 library(sf)
 source(here("Code/01a_DataFormat_Fun.R"))
-source(here("Code/02a_GradDescentFun.R"))
+source(here("Code/02a_ForwardGradFun.R"))
 
 # Read in the data --------------------------------------------------------
 stripe <- readRDS(here("DataProcessed/experimental/stripe_clean.rds"))
@@ -117,32 +117,35 @@ kappa_try <- seq(0.25,2.5,0.25)
 
 # Assign Groups (For Backward Model) --------------------------------------
 stripe_sp <- stripe %>% select(plant_num, east, north) %>% distinct() %>% st_as_sf(coords = c("east", "north"))
-configs <- c("2 x 2", "4 x 2", "2 x 4", "4 x 4")
+configs <- c("2 x 2", "4 x 2", "2 x 4", "4 x 4", "8 x 8")
 
 ##Create grids (see DataFromat_Funs)
-stripe_4 <- get_grid(stripe_sp, 2, 2, configs[1])
+stripe_4 <- get_grid(stripe_sp, 4, 4, configs[4])
 stripe_8h <- get_grid(stripe_sp, 4, 2, configs[2])
 stripe_8v <- get_grid(stripe_sp, 2, 4, configs[3])
-stripe_16 <- get_grid(stripe_sp, 4, 4, configs[4])
+stripe_16 <- get_grid(stripe_sp, 2, 2, configs[1])
+stripe_64 <- get_grid(stripe_sp, 1, 1, configs[5])
 
 ## Merge to list
 grids <- list(
   "4" = stripe_4,
   "8h" = stripe_8h,
   "8v" = stripe_8v,
-  "16" = stripe_16
+  "16" = stripe_16,
+  "64" = stripe_64
 )
+
 saveRDS(grids, here("DataProcessed/experimental/grids_sp.rds"))
 
-grid_dist <- map(grids, .f = ~st_distance(st_centroid(.x)))
+grid_dist <- map(grids, .f = ~st_distance(st_centroid(.x[["grid"]])))
 
 plant_group <- array(NA_real_, dim = c(n_plants, length(configs)),
                    dimnames = list(
                      plant = paste0(1:n_plants),  # no plant names
-                     config = c("4", "8h", "8v", "16")))
+                     config = c("4", "8h", "8v", "16", "64")))
 
 for (conf in dimnames(plant_group)$config) {
-  plant_group[,conf] <- st_join(stripe_sp, grids[[conf]])$grid_id
+  plant_group[,conf] <- grids[[conf]][["points"]][["grid_id"]]
 }
 
 single_inocs <- inocs %>% select(block, inoculum_total, geometry) %>% 
@@ -150,13 +153,19 @@ single_inocs <- inocs %>% select(block, inoculum_total, geometry) %>%
 
 true_infect <- array(NA_real_, dim = c(n_blocks, length(configs)),
                      dimnames = list(block = LETTERS[1:n_blocks],
-                                     config = c("4", "8h", "8v", "16")))
+                                     config = c("4", "8h", "8v", "16", "64")))
 for (blk in dimnames(true_infect)$block) {
   for (conf in dimnames(true_infect)$config) {
     true_infect[blk,conf] <- single_inocs %>% filter(block == blk) %>% 
-      st_join(grids[[conf]]) %>% .$grid_id
+      st_join(grids[[conf]][["grid"]]) %>% .$grid_id
   }
 }
+
+grids$`16`$grid |> 
+  ggplot()+
+  geom_sf(fill = "transparent")+
+  geom_sf_label(aes(label = grid_id)) + 
+  geom_sf(data = single_inocs, aes(color = block))
 
 # Create Final List -------------------------------------------------------
 

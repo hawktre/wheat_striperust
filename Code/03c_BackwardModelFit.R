@@ -43,15 +43,6 @@ treats <- dimnames(mod_dat$intensity)[["treat"]]
 visits <- dimnames(mod_dat$intensity)[["visit"]]
 configs <- dimnames(mod_dat$groups)[["config"]]
 
-combos_backward <- expand.grid(
-  config = configs,
-  bk = blocks,
-  trt = treats,
-  vst = visits[2:length(visits)],
-  stringsAsFactors = FALSE
-)
-
-
 # Fit the model -----------------------------------------------------------
 # 2. Fit backward model
 combos_backward <- expand.grid(config = configs, blk = blocks, trt = treats, vst = visits[-1], stringsAsFactors = FALSE)
