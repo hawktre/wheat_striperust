@@ -46,6 +46,8 @@ configs <- dimnames(mod_dat$groups)[["config"]]
 # Fit the model -----------------------------------------------------------
 # 2. Fit backward model
 combos_backward <- expand.grid(config = configs, blk = blocks, trt = treats, vst = visits[-1], stringsAsFactors = FALSE)
+backward_fit(config = "4", blk = "A", trt = "1", vst = "2", mod_dat = mod_dat, forward_fits = forward)
+backward_fit(config = "64", blk = "A", trt = "1", vst = "2", mod_dat = mod_dat, forward_fits = forward)
 backward <- pmap(combos_backward, ~backward_fit(..1, ..2, ..3, ..4, mod_dat = mod_dat, forward)) %>% rbindlist()
 
 # 4. Source prediction for treat == 1

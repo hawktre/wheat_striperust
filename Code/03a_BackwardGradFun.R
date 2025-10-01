@@ -39,6 +39,7 @@ lik_beta_backward <- function(y, mu_mat, phi, sum = TRUE, log = TRUE) {
 }
 
 Q_fun <- function(y, mu_mat, phi, p_mat) {
+
   #Estimate pi and where y == 0
   pi <- mean(y == 0)
   zero_idx <- which(y == 0)
