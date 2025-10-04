@@ -64,8 +64,8 @@ message("Runtime = ", round(runtime, 2), " minutes")
 
 
 # Get Fitted values & residuals-----------------------------------------------------------
-free_fits$fitted <- pmap(free_fits, ~get_fitted(blk = ..1, trt = ..2, vst = ..3, par = ..9, mod_dat))
-free_fits$resid <- pmap(free_fits, ~compute_deviance_resid(blk = ..1, trt = ..2, vst = ..3, par = ..9, pi = ..10, 
+free_fits$fitted <- pmap(free_fits, ~get_fitted(blk = ..1, trt = ..2, vst = ..3, par = ..9, alpha = ..10, mod_dat))
+free_fits$resid <- pmap(free_fits, ~compute_deviance_resid(blk = ..1, trt = ..2, vst = ..3, par = ..9, alpha = ..10, 
                                                            fitted = ..11, data = mod_dat))
 
 saveRDS(free_fits, here("DataProcessed/results/forward_model/forward_fits.rds"))

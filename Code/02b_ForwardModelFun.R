@@ -33,18 +33,17 @@ forward_fit <- function(blk, trt, vst, mod_dat, dist, kappa_try) {
   intensity <- mod_dat$intensity[, blk, trt, vst]
   intensity_prev <- mod_dat$intensity[, blk, trt, as.numeric(vst) - 1]
   wind <- mod_dat$wind[, , blk, trt, vst]
-  pi <- mean(intensity == 0)
-  non_zero <- which(intensity != 0)
+  non_zero <- which(intensity > 0)
   
   ## Set up strage for temproary results
   results_list <- list()
   
   for (kappa in kappa_try) {
     #Generate initial values for current kappa in grid search
-    init_theta <- initialize_theta(y_cur = intensity[non_zero], 
-                                   y_prev = intensity_prev[non_zero], 
-                                   wind_mat = wind[non_zero, non_zero], 
-                                   dist_mat = dist[non_zero, non_zero], 
+    init_theta <- initialize_theta(y_cur = intensity, 
+                                   y_prev = intensity_prev, 
+                                   wind_mat = wind, 
+                                   dist_mat = dist, 
                                    kappa_try = as.numeric(kappa),
                                    d_0 = 0.01)
     
@@ -56,10 +55,10 @@ forward_fit <- function(blk, trt, vst, mod_dat, dist, kappa_try) {
         method = "BFGS",
         control = list(maxit = 5000, 
                        reltol = 1e-6),
-        y_current = intensity[non_zero],
-        y_prev = intensity_prev[non_zero],
-        wind_matrix = wind[non_zero, non_zero],
-        dist_matrix = dist[non_zero, non_zero]
+        y_current = intensity,
+        y_prev = intensity_prev,
+        wind_matrix = wind,
+        dist_matrix = dist
       ),
       error = function(e) {
         message(sprintf("forward_fit failed: %s [blk=%s, trt=%s, vst=%s, kappa=%s]",
@@ -71,10 +70,10 @@ forward_fit <- function(blk, trt, vst, mod_dat, dist, kappa_try) {
     if (!is.null(fit)) {
       g <- neg_grad(
         fit$par,
-        y_current = intensity[non_zero],
-        y_prev = intensity_prev[non_zero],
-        wind_matrix = wind[non_zero, non_zero],
-        dist_matrix = dist[non_zero, non_zero])
+        y_current = intensity,
+        y_prev = intensity_prev,
+        wind_matrix = wind,
+        dist_matrix = dist)
       
       results_list[[length(results_list) + 1]] <- list(
         block = blk,
@@ -86,7 +85,7 @@ forward_fit <- function(blk, trt, vst, mod_dat, dist, kappa_try) {
         grad_norm = sqrt(sum(g^2)),
         converged = fit$convergence == 0,
         theta = list(fit$par),
-        pi = pi
+        alpha = mean(intensity == 0)
       )
     }
     
@@ -104,8 +103,9 @@ forward_fit <- function(blk, trt, vst, mod_dat, dist, kappa_try) {
 }
 
 
+
 # Forward Model Fitted Values ---------------------------------------------
-get_fitted <- function(blk, trt, vst, par, mod_dat, d0 = 0.01) {
+get_fitted <- function(blk, trt, vst, par, alpha, mod_dat, d0 = 0.01) {
   y_prev <- mod_dat$intensity[,blk,trt,as.numeric(vst) - 1]
   wind_matrix <- mod_dat$wind[,,blk,trt,vst]
   dist_matrix <- mod_dat$dist
@@ -124,39 +124,40 @@ get_fitted <- function(blk, trt, vst, par, mod_dat, d0 = 0.01) {
   S <- ncol(dispersal)
   
   ## Auto-infection
-  y_vec <- y_prev * (1 - y_prev)
+  auto_infection <- y_prev * (1 - y_prev)
   
   
-  eta_mat <- beta + delta * y_vec + gamma * dispersal
-  mu_mat  <- inv_logit(eta_mat)
+  eta <- beta + delta * auto_infection + gamma * dispersal
+  mu  <- inv_logit(eta)
+  fitted <- (1-alpha) * mu
   
-  return(pmin(pmax(mu_mat, 1e-6), 1 - 1e-6))  # Clip for stability
+  return(fitted)  
 }
 
 
 # Forward Model Deviance Residuals ----------------------------------------
-compute_deviance_resid <- function(blk, trt, vst, par, pi, fitted, data) {
+compute_deviance_resid <- function(blk, trt, vst, par, alpha, fitted, data) {
 
   y <- data$intensity[,blk, trt, vst]
   mu_hat <- fitted
   phi_hat <- par[["phi"]] 
   
-  is_zero <- y == 0
-  is_pos <- !is_zero
-  
+  is_pos <- which(y > 0)
+  is_zero <- which(y == 0)
+
   ll_fit <- numeric(length(y))
   ll_sat <- numeric(length(y))
   
   # Zero values
-  ll_fit[is_zero] <- log(pi)
-  ll_sat[is_zero] <- log(pi)  # same since model fits perfectly
+  ll_fit[is_zero] <- log(alpha)
+  ll_sat[is_zero] <- log(alpha)  # same since model fits perfectly
   
   # Positive values
-  ll_fit[is_pos] <- log(1 - pi) + loglik_beta(y[is_pos], mu_hat[is_pos], phi_hat, sum = FALSE)
-  ll_sat[is_pos] <- log(1 - pi) + loglik_beta(y[is_pos], y[is_pos], phi_hat, sum = FALSE)
+  ll_fit[is_pos] <- loglik_zibeta(y[is_pos], mu_hat[is_pos], phi_hat, sum = FALSE)
+  ll_sat[is_pos] <- loglik_zibeta(y[is_pos], y[is_pos], phi_hat, sum = FALSE)
   
   sqrt_term <- pmax(0, 2 * (ll_sat - ll_fit))
-  sign(y - (1 - pi) * mu_hat) * sqrt(sqrt_term)
+  sign(y - (1 - alpha) * mu_hat) * sqrt(sqrt_term)
 }
 
 
