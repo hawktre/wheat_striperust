@@ -116,8 +116,6 @@ loglik_zibeta <- function(y, mu, phi, sum = TRUE, log = TRUE) {
   
   # Gather Fixed Terms
   n <- length(y)
-  n_zero <- sum(y == 0)
-  non_zero <- which(y != 0)
 
   # Estimate alpha (zero-inflation term)
   alpha <- mean(y == 0)
@@ -125,19 +123,17 @@ loglik_zibeta <- function(y, mu, phi, sum = TRUE, log = TRUE) {
   # Prepare per-observation log-likelihood vector
   ll <- numeric(n)
 
-  # Zero observations: each contributes log(alpha)
-  if (n_zero > 0) {
-    ll[y == 0] <- log(alpha)
-  }
-
-  # Non-zero observations: each contributes log(1-alpha) + beta log-pdf
-  if (length(non_zero) > 0) {
-    a <- mu * phi
-    b <- (1 - mu) * phi
-    ll <- log(1 - alpha) +
-      ( lgamma(phi) - lgamma(a) - lgamma(b) ) +
-      (a - 1) * log(y[non_zero]) +
-      (b - 1) * log(1 - y[non_zero])
+  for(i in 1:length(y)){
+    if(y[i] == 0){
+      ll[i] <- log(alpha)
+    }else{
+      a <- mu[i] * phi
+      b <- (1 - mu[i]) * phi
+      ll[i] <- log(1 - alpha) +
+      (lgamma(phi) - lgamma(a) - lgamma(b) ) +
+      (a - 1) * log(y[i]) +
+      (b - 1) * log(1 - y[i])
+    }
   }
 
   if (sum) {
@@ -149,7 +145,6 @@ loglik_zibeta <- function(y, mu, phi, sum = TRUE, log = TRUE) {
   
   return(out)
 }
-
 
 # --- function for negative log-likelihood ---
 neg_loglik <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01) {

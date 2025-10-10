@@ -16,60 +16,60 @@ logit <- function(p) log(p / (1 - p))
 inv_logit <- function(x) 1 / (1 + exp(-x))
 
 # Compute Likelihood ---------------------------------------------------------
-lik_beta_backward <- function(y, mu_mat, phi, sum = TRUE, log = TRUE) {
+loglik_zibeta <- function(y, mu, phi, sum = TRUE, log = TRUE) {
+  
+  # Gather Fixed Terms
+  n <- length(y)
 
-  y <- matrix(y, nrow = nrow(mu_mat), ncol = ncol(mu_mat))  
-  phi <- matrix(phi, nrow = nrow(mu_mat), ncol = ncol(mu_mat))  
-  
-  val <- lgamma(phi) -
-    lgamma(mu_mat * phi) -
-    lgamma((1 - mu_mat) * phi) +
-    (mu_mat * phi - 1) * log(y) +
-    ((1 - mu_mat) * phi - 1) * log(1 - y)
-  
-  if (!log) {
-    val <- exp(val)
+  # Estimate alpha (zero-inflation term)
+  alpha <- mean(y == 0)
+
+  # Prepare per-observation log-likelihood vector
+  ll <- numeric(n)
+
+  for(i in 1:length(y)){
+    if(y[i] == 0){
+      ll[i] <- log(alpha)
+    }else{
+      a <- mu[i] * phi
+      b <- (1 - mu[i]) * phi
+      ll[i] <- log(1 - alpha) +
+      (lgamma(phi) - lgamma(a) - lgamma(b) ) +
+      (a - 1) * log(y[i]) +
+      (b - 1) * log(1 - y[i])
+    }
   }
-  
+
   if (sum) {
-    return(rowSums(val))
+    out <- sum(ll)
+    if (!log) out <- exp(out)   # exponentiate after sum
   } else {
-    return(val)
-  }
-}
-
-Q_fun <- function(y, mu_mat, phi, p_mat) {
-
-  #Estimate pi and where y == 0
-  pi <- mean(y == 0)
-  zero_idx <- which(y == 0)
-  
-  S <- ncol(mu_mat)
-  #Compute weighted likelihood matrix
-  lik_mat <- (1-pi) * lik_beta_backward(y, mu_mat, phi, sum = F, log = F) #When y > 0
-  
-  if(!is.null(zero_idx)){
-  lik_mat[zero_idx, 1:S] <- pi #when y == 0
+    out <- if (log) ll else exp(ll)  # return vector
   }
   
-  #compute Q-val
-  Q_val <- sum(p_mat * lik_mat)
-  return(-Q_val)
+  return(out)
 }
 
-wrapped_obj <- function(par, y_current, y_prev, wind_matrix, dist_matrix, group_id, p_mat, d0 = 0.01) {
-  
+Q_fun <- function(par, y_current, y_prev, wind_matrix, dist_matrix, group_id, p_mat, d0 = 0.01) {
+  #Compute mu assuming infection from each group
   mu_mat <- get_mu(par = par,
                    y_prev = y_prev,
                    wind_matrix = wind_matrix,
                    dist_matrix = dist_matrix,
                    d0 = d0,
                    group_id = group_id)
+  
+  # Extract phi from parameter vector
   phi <- par["phi"]
-  Q_fun(y = y_current, mu_mat = mu_mat, phi = phi, p_mat = p_mat)
+
+  #Compute weighted likelihood matrix
+  lik_mat <- lik_zibeta_backward(y, mu_mat, phi, sum = F, log = T) #When y > 0
+  
+  #compute Q-val
+  Q_val <- sum(p_mat * lik_mat)
+
+  return(-Q_val)
 }
-
-
 
 # Dispersal function ------------------------------------------------------
 kappa_inner_sum_backward <- function(y_prev, wind_matrix, dist_matrix, d0, kappa, 
@@ -134,6 +134,7 @@ get_mu <- function(par, y_prev, wind_matrix, dist_matrix, d0 = 0.01, group_id) {
 
 # E-step ------------------------------------------------------------------
 e_step <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01, group_id, prior){
+  browser()
   mu_mat <- get_mu(par = par,
                    y_prev = y_prev,
                    wind_matrix = wind_matrix,
@@ -144,18 +145,13 @@ e_step <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01, 
   n <- length(y_current)
   S <- length(unique(group_id))
   
-  #If the prior is a constant, make it a vector of length n
+  # Make the prior a vector of length n
   if(length(prior) == 1){
     prior <- rep(prior, S)
   }
   
-  # Estimate pi from the current data
-  pi <- mean(y_current == 0)
-  zero_idx <- which(y_current == 0)
-  
   # Initialize weighted likelihood matrix
-  wl_mat <- prior * (1-pi) * lik_beta_backward(y_current, mu_mat, par[['phi']], sum = F, log = F)
-  wl_mat[zero_idx, 1:S] <- prior*pi 
+  wl_mat <- prior * lik_zibeta_backward(y_current, mu_mat, par[['phi']], sum = F, log = F)
   
   #Compute posterior probabilities
   p_mat <- wl_mat / rowSums(wl_mat)
@@ -172,20 +168,24 @@ mstep_grad_em <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 =
   gamma <- par["gamma"]
   kappa <- par["kappa"]
   phi   <- par["phi"]
+
+  non_zero <- which(y_current > 0)
+
+  # Create model matrices for each term (n x S)
+  y_prev_term <- outer(y_prev * (1 - y_prev), rep(1, ncol(mu_mat)))[non_zero, ]
+  dispersal_term <- kappa_inner_sum_backward(y_prev, wind_matrix, dist_matrix, d0, kappa, group_id = group_id)[non_zero, ]
+  dispersal_term_deriv <- kappa_inner_sum_backward(y_prev, wind_matrix, dist_matrix, d0, kappa, derivative = TRUE, group_id = group_id)[non_zero, ]
   
   # Compute predicted mu matrix (n x S)
-  mu_mat <- get_mu(par, y_prev, wind_matrix, dist_matrix, d0, group_id)
+  mu_mat <- get_mu(par, y_prev, wind_matrix, dist_matrix, d0, group_id)[non_zero, ]
   
   # Compute derivatives
-  y_star <- logit(y_current)
+  y_star <- logit(y_current[non_zero])
   mu_star <- digamma(mu_mat * phi) - digamma((1 - mu_mat) * phi)
   weight <- phi * (y_star - mu_star) * mu_mat * (1 - mu_mat)
   
   
-  # Create model matrices for each term (n x S)
-  y_prev_term <- outer(y_prev * (1 - y_prev), rep(1, ncol(mu_mat)))
-  dispersal_term <- kappa_inner_sum_backward(y_prev, wind_matrix, dist_matrix, d0, kappa, group_id = group_id)
-  dispersal_term_deriv <- kappa_inner_sum_backward(y_prev, wind_matrix, dist_matrix, d0, kappa, derivative = TRUE, group_id = group_id)
+  
   
   # Weight everything by p_mat
   d_beta  <- sum(p_mat * weight)

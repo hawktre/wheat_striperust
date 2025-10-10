@@ -22,7 +22,7 @@ source(here("Code/02a_ForwardGradFun.R"))
 
 # Backward Fit ------------------------------------------------------------
 backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits, kappa = NULL) {
-
+  browser()
   # Setup
   intensity <- mod_dat$intensity[, blk, trt, vst]
   intensity_prev <- mod_dat$intensity[, blk, trt, as.numeric(vst) - 1]
@@ -35,15 +35,14 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits, kappa = N
   
   # Starting values from forward fit (grid search or MLE approach)
   if(!is.null(kappa)){
-    theta <- initialize_theta(y_cur = intensity[non_zero], 
-                                   y_prev = intensity_prev[non_zero], 
-                                   wind_mat = wind[non_zero, non_zero], 
-                                   dist_mat = dist[non_zero, non_zero], 
+    theta <- initialize_theta(y_cur = intensity, 
+                                   y_prev = intensity_prev, 
+                                   wind_mat = wind, 
+                                   dist_mat = dist, 
                                    kappa_try = as.numeric(kappa),
                                    d_0 = 0.01)
   }else{
-    theta <- forward_fits[
-    block == blk & treat == as.numeric(trt) & visit == as.numeric(vst)
+    theta <- forward_fits[block == blk & treat == as.numeric(trt) & visit == as.numeric(vst)
   ][["theta"]][[1]]
   }
   
@@ -72,12 +71,12 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits, kappa = N
         gr = mstep_grad_em,
         method = "BFGS",
         control = list(maxit = 1000, reltol = tol),
-        p_mat = p_mat[non_zero, ],
-        y_current = intensity[non_zero],
-        y_prev = intensity_prev[non_zero],
-        wind_matrix = wind[non_zero, non_zero],
-        dist_matrix = dist[non_zero, non_zero],
-        group_id = groups[non_zero]
+        p_mat = p_mat,
+        y_current = intensity,
+        y_prev = intensity_prev,
+        wind_matrix = wind,
+        dist_matrix = dist,
+        group_id = groups
       ),
       error = function(e) {
         message(sprintf(
