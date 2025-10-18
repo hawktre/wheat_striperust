@@ -50,26 +50,6 @@ loglik_zibeta <- function(y, mu, phi, sum = TRUE, log = TRUE) {
   return(out)
 }
 
-Q_fun <- function(par, y_current, y_prev, wind_matrix, dist_matrix, group_id, p_mat, d0 = 0.01) {
-  #Compute mu assuming infection from each group
-  mu_mat <- get_mu(par = par,
-                   y_prev = y_prev,
-                   wind_matrix = wind_matrix,
-                   dist_matrix = dist_matrix,
-                   d0 = d0,
-                   group_id = group_id)
-  
-  # Extract phi from parameter vector
-  phi <- par["phi"]
-
-  #Compute weighted likelihood matrix
-  lik_mat <- lik_zibeta_backward(y, mu_mat, phi, sum = F, log = T) #When y > 0
-  
-  #compute Q-val
-  Q_val <- sum(p_mat * lik_mat)
-
-  return(-Q_val)
-}
 
 # Dispersal function ------------------------------------------------------
 kappa_inner_sum_backward <- function(y_prev, wind_matrix, dist_matrix, d0, kappa, 
@@ -103,9 +83,7 @@ kappa_inner_sum_backward <- function(y_prev, wind_matrix, dist_matrix, d0, kappa
   
   return(dispersal_mat)  # n x S matrix of dispersal from each group
 }
-
-
-# Mean function -----------------------------------------------------------
+ # Mean function -----------------------------------------------------------
 get_mu <- function(par, y_prev, wind_matrix, dist_matrix, d0 = 0.01, group_id) {
   beta  <- par["beta"]
   delta <- par["delta"]
@@ -129,12 +107,38 @@ get_mu <- function(par, y_prev, wind_matrix, dist_matrix, d0 = 0.01, group_id) {
   eta_mat <- beta + delta * y_mat + gamma * dispersal
   mu_mat  <- inv_logit(eta_mat)
   
-  return(pmin(pmax(mu_mat, 1e-6), 1 - 1e-6))  # Clip for stability
+  return(pmin(pmax(mu_mat, 1e-6), 1 - 1e-6))  # Clip for stability. Returns an n x S matrix
 }
+
+Q_fun <- function(par, y_current, y_prev, wind_matrix, dist_matrix, group_id, p_mat, d0 = 0.01) {
+  #Compute mu assuming infection from each group
+  mu_mat <- get_mu(par = par,
+                   y_prev = y_prev,
+                   wind_matrix = wind_matrix,
+                   dist_matrix = dist_matrix,
+                   d0 = d0,
+                   group_id = group_id)
+  
+  # Extract phi from parameter vector
+  phi <- par["phi"]
+
+  #Compute weighted likelihood matrix
+  lik_mat <- apply(mu_mat, 2, function(x) loglik_zibeta(y, x, phi, sum = F, log = T))
+  
+  #compute Q-val
+  Q_val <- sum(p_mat * lik_mat)
+
+  return(-Q_val)
+}
+
+
+
+
+
 
 # E-step ------------------------------------------------------------------
 e_step <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01, group_id, prior){
-  browser()
+
   mu_mat <- get_mu(par = par,
                    y_prev = y_prev,
                    wind_matrix = wind_matrix,
@@ -151,7 +155,7 @@ e_step <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01, 
   }
   
   # Initialize weighted likelihood matrix
-  wl_mat <- prior * lik_zibeta_backward(y_current, mu_mat, par[['phi']], sum = F, log = F)
+  wl_mat <- prior * apply(mu_mat, 2, function(x) loglik_zibeta(y, x, par[['phi']], sum = F, log = F))
   
   #Compute posterior probabilities
   p_mat <- wl_mat / rowSums(wl_mat)

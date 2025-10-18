@@ -135,13 +135,13 @@ We then optimized the parameter vector $\Theta_{t}$ separately for each transiti
 
 ## The Backward Model
 
-The ultimate goal of this project is to derive and implement a modeling framework for *source imputation*. In the forward model, we explicitly accounted for the amount of inoculate moved from sample location $j$ to sample location $i$ via an orthogonal wind vector $w_{i}$ as a non-linear function of the distance between sample locations through the dispersal component of the model (@eq-dispersal).
+The ultimate goal of this project is to derive and implement a modeling framework for *source imputation*. In the forward model, we explicitly accounted for the amount of inoculate moved from sample location $j$ to sample location $i$ via an orthogonal projection of wind ($\mathbf{w}$) as a non-linear function of the distance between sample locations through the dispersal component of the model (@eq-dispersal).
 
 $$
 \gamma\sum_{j \neq i}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}}
 $$ {#eq-dispersal}
 
-We weighted the contribution of each sample location by its severity at the previous time point $y_{j, t-1}$, and summed over the contribution from all other sources such that the dispersal term $\gamma$ can then be interpreted as in @tbl-covars. This approach has a major advantage in that we do not need to optimize the weight associated with each source $j \neq i$, which would certainly lead to issues of identifiability otherwise. The model falls short, however, when it comes to the issue of *source imputation*.
+We weighted the contribution of each sample location by its severity at the previous time point $y_{j, t-1}$, and summed over the contribution from all other sources such that the dispersal term $\gamma$ can then be interpreted as in @tbl-covars. The model falls short, however, when it comes to the issue of *source imputation*.
 
 Let us introduce a latent process $Z$ which indicates the causal attribution of disease to one of $k \in \bigpar{1, \ldots, K}$ sources with a certain probability:
 
@@ -151,32 +151,32 @@ $$
 
 Under this framework $P(Z_i = k) = \pi_k$ indicates that an infection event is caused by source $k$ with probability $\pi_k$. We are interested in estimating the conditional posterior $p_k = p(z_i = k \mid \mathbf{X}, \Theta)$---the probability that source location $i$ was infected by source $k$, given our observed data (also called the 'complete' data). One way to accomplish such a goal is to leverage the Expectation-Maximization (EM) algorithm. 
 
+Define the complete data as $\mathcal{X} = \bigbrace{\mathcal{Y}, \boldsymbol{Z}}$, where $\mathcal{Y} = \bigbrace{\mathbf{y}_t, \mathbf{w}_t, \mathbf{d}}$ Our goal here is to find the maximum likelihood estimate of the marginal likelihood of our *observed* data $\mathrm{ZIB}(y_{i,t}; \alpha_t, \mu_{i,t}, \phi_t)$ by iteratively applying two steps: 
 
-Where
 
--   $\boldsymbol{p}_i = \bigpar{p_{i1}, \ldots, p_{iS}}$
--   $p_{is} = P(Z_i = s)$
--   $\sum_{s=1}^Sp_{is} = 1$
+**Expectation step (E-step):** Find the expected log-likelihood of our parameter vector with respect to the conditional distribution of $\mathbf{Z \mid Y}$
+$$
+Q(\Theta; \Theta^{(h)}) = E_{Z}\bigbrak{\log p \bigpar{\mathbf{Y}, \mathbf{Z} \mid \Theta}}
+$${#eq-estep}
 
-Define the complete data as $\mathcal{X} = \bigbrace{\mathcal{Y}, \boldsymbol{Z}}$, where $\mathcal{Y} = \bigbrace{y_{i,t}, y_{j,t-1}, w_{ij}, d_{ij}}$ for all $j \neq i$. The complete-data log-likelihood is then given by: $$
-\ell(\boldsymbol{\theta} \mid \mathcal{X}) = \nsum \sum_{s=1}^S \indicate{Z_i = s} \cdot \log f(y_{i,t} \mid \mu_{i,t}^{(s)}, \phi_t)
-$$ {#eq-loglik}
+**Maximization step (M-step):** Update the parameter vector 
+$$
+\Theta^{(h + 1)} = \arg\max_\theta \ Q(\Theta | \Theta^{(h)})
+$${#eq-mstep}
 
-where $\mu_{i,t}^{(s)}$ denotes the predicted mean intensity at $i$ assuming infection from source group $s$. We can then apply the Expectation-Maximization (EM) algorithm to estimate the posterior source probabilities $\hat p^{(s)}_{i,t}$. At each iteration:
+Note that we can simplify the E-step with some manipulation. It can equivalently be written: 
 
-\textbf{E-step:} Use Bayes' rule to update $$
-\hat p_i^{(s)} =  P(Z_i = s \mid \mathcal{Y}) \propto f(y_{i,t} \mid \mu_{i,t}^{(s)}, \phi_t) \cdot \pi_s
-$$ {#eq-estep}
+$$
+Q(\Theta, \Theta^{(h)}) = \nsum \sum_{k = 1}^K p_k \cdot \log p\bigpar{y_i \mid z_i = k} + \nsum \sum_{k = 1}^K p_k \cdot \log \pi_k
+$$
 
-Where $\pi_s$ is the prior probability that source group $s$ is responsible for infection at unit $i$. A uniform prior over all $S$ source groups is a natural choice: $\pi_s = 1/S$ for all $s$.
+Where $p_k$ is the posterior probability $p(z_i = k \mid y_i, \Theta)$ that component $k$ is responsible for infection of sample unit $i$, $\pi_k$ is the marginal probability $p(Z_i = k)$. Note that $\log p\bigpar{y_i \mid z_i = k}$ is the log-likelihood of our ZIB distribution defined earlier **assuming infection from component** $k$. Using the notation defined earlier, we can write
 
-\textbf{M-step:} Maximize the expected complete-data log-likelihood $$
-Q(\boldsymbol\theta) = \nsum \sum_{s=1}^S \hat p_i^{(s)} \cdot \log f(y_{i,t} \mid \mu_{i,t}^{(s)}, \phi_t)
-$$ {#eq-mstep}
+$$
+P(y_i | z_i = k) = \mathrm{ZIB}\bigpar{y_i ; \alpha_t, \mu_{i,t}^{(k)}, \phi_t}
+$$
 
-This schematic can be made more complex by considering that dispersal dynamics may differ across source blocks $s \in S$. Here, we will assume that dispersal dynamics are constant across blocks. That is, we will continue to estimate a global parameter vector, $\boldsymbol\theta_t$ as opposed to a source-specific $\boldsymbol\theta^{(s)}_t$.
-
-Note that this new modeling framework requires a prior on the number of sources $S$. Here, we propose to assign each plant $i$ to one of $S$ evenly-divided and non-overlapping potential source groups $G_s \subset i \in \bigbrace{1, 2, \ldots, n}$ (@fig-sourcegroup).
+To estimate $\mu_{i,t}^{(k)}$, we propose to assign each plant $i$ to one of $k \in K$ evenly-divided and non-overlapping potential source groups $G_k \subset i \in \bigbrace{1, 2, \ldots, n}$ (@fig-sourcegroup).
 
 ```{r}
 #| echo: false
@@ -191,60 +191,71 @@ library(tidyverse)
 library(here)
 library(sf)
 
-clusters <- readRDS(here("DataProcessed/experimental/clusters.rds"))
+clusters <- readRDS(here("DataProcessed/experimental/grids_sp.rds"))
 
-plant_clust <- bind_rows(clusters$stripe_4$stripe_assigned %>% mutate,
-                         clusters$stripe_8h$stripe_assigned,
-                         clusters$stripe_8v$stripe_assigned,
-                         clusters$stripe_16$stripe_assigned)
 
-grid <- bind_rows(clusters$stripe_4$grid,
-                  clusters$stripe_8h$grid,
-                  clusters$stripe_8v$grid,
-                  clusters$stripe_16$grid)
+plant_grid <- bind_rows(clusters$`4`$grid,
+                         clusters$`8h`$grid,
+                         clusters$`8v`$grid,
+                         clusters$`16`$grid,
+                         clusters$`64`$grid)
 
-plant_clust_sp <- plant_clust %>% 
-  select(grid_id, grid_type, geometry) %>% 
-  distinct()
+points_grid <- bind_rows(clusters$`4`$points,
+                         clusters$`8h`$points,
+                         clusters$`8v`$points,
+                         clusters$`16`$points,
+                         clusters$`64`$points)
 
-grid %>% 
+plant_grid <- plant_grid |> mutate(K = case_when(name == "2 x 2" ~ "K = 16",
+name == "2 x 4" ~ "K = 8 (Vertical)",
+name == "4 x 2" ~ "K = 8 (Horizontal)",
+name == "4 x 4" ~ "K = 4",
+name == "8 x 8" ~ "K = 64")) |> 
+  mutate(K = factor(K, levels = c("K = 4", 
+  "K = 8 (Vertical)",
+  "K = 8 (Horizontal)",
+  "K = 16", 
+  "K = 64")))
+
+plant_grid %>% 
   ggplot()+
   geom_sf(fill = "transparent")+
-  geom_sf_text(aes(label = grid_id))+
-  facet_wrap(~grid_type, nrow = 1)+
+  geom_sf(data = points_grid)+
+  geom_sf_text(aes(label = grid_id), size = 2)+
+  facet_wrap(~K, nrow = 1)+
   labs(x = "E", y = "N")+
   theme_classic()
 
 ggsave("prior_grid.png", path = here("Reports/CAS_poster/"), width = 10, height = 4, unit = "in")
 ```
 
-At each iteration, we will specifically update $\hat\mu_{i,t}^{(s)}$ as
+At each iteration, we will specifically update $\hat\mu_{i,t}^{(k)}$ as
 
 $$
-\hat\mu_{i,t}^{(s)} = \logit^{-1}\bigpar{\hat\eta_{i,t}^{(s)}} = \hat\beta + \hat\delta y_{i,t-1}(1 - y_{i,t-1}) + \hat\gamma \sum_{j \in G_s} \bigpar{y_{j,t-1} w_{ij} (d_{ij} + d_0)^{-\hat\kappa}}
+\hat\mu_{i,t}^{(k)} = \logit^{-1}\bigpar{\hat\eta_{i,t}^{(k)}} = \hat\beta_t^{(k)} + \hat\delta_t^{(k)}  y_{i,t-1}(1 - y_{i,t-1}) + \hat\gamma_t^{(k)}  \sum_{j \in G_k} \bigpar{y_{j,t-1} w_{ij} (d_{ij} + d_0)^{-\hat\kappa_t^{(k)}}}
 $$ {#eq-meanmod2}
 
-where $\hat\cdot$ denotes the MLE estimates from the global model, with gradients updated to reflect $\hat p_i^{(s)}$ (@eq-newgrad - @eq-gradphi). Letting $y_{i,t}^* = \log\bigpar{\frac{y_{i,t}}{1 - y_{i,t}}}$ and $\mu_{i,t}^* = \psi(\mu_{i,t}^{(s)}\phi_t)-\psi((1-\mu_{i,t}^{(s)})\phi_t)$, we have that
+where $\hat\cdot$ denotes the MLE estimates from the global model, with gradients updated to reflect $\hat p_i^{(k)}$ (@eq-newgrad - @eq-gradphi). Letting $y_{i,t}^* = \log\bigpar{\frac{y_{i,t}}{1 - y_{i,t}}}$ and $\mu_{i,t}^* = \psi(\mu_{i,t}^{(k)}\phi_t)-\psi((1-\mu_{i,t}^{(k)})\phi_t)$, we have for the non-zero part of $\mathbf{y}_t$ that
 
 $$
-\frac{\partial Q}{\partial \mu_{i,t}^{(s)}} \times \frac{\partial \mu_{i,t}^{(s)}}{\partial\eta_{i,t}} = \nsum \sum_{s=1}^S \hat p_i^{(s)} \cdot \phi_t(y_{i,t}^* - \mu_{i,t}^*) \cdot \mu_{i,t}^{(s)}(1 - \mu_{i,t}^{(s)})
+\frac{\partial Q}{\partial \mu_{i,t}^{(k)}} \times \frac{\partial \mu_{i,t}^{(k)}}{\partial\eta_{i,t}} = \nsum \sum_{k=1}^K \hat p_i^{(k)} \cdot \phi_t(y_{i,t}^* - \mu_{i,t}^*) \cdot \mu_{i,t}^{(k)}(1 - \mu_{i,t}^{(k)})
 $$ {#eq-newgrad}
 
-Denoting the summand as $\text{grad}_{i,t}^{(s)}$, we can then write the updated gradients as
+Denoting the summand as $\text{grad}_{i,t}^{(k)}$, we can then write the updated gradients as
 
 $$
 \begin{split}
-\frac{\partial Q}{\partial\beta} &= \nsum \sum_{s=1}^S\text{grad}_{i,t}^{(s)} \\
-\frac{\partial Q}{\partial\delta} &= \nsum \sum_{s=1}^S\text{grad}_{i,t}^{(s)}\times y_{i,t-1}(1 - y_{i,t-1}) \\
-\frac{\partial Q}{\partial\gamma} &= \nsum \sum_{s=1}^S\text{grad}_{i,t}^{(s)} \times \sum_{j \in G_s}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}} \\
-\frac{\partial Q}{\partial\kappa} &= \nsum \sum_{s=1}^S\text{grad}_{i,t}^{(s)} \times -\gamma \sum_{j \in G_s}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}\log(d_{ij} + d_0)}
+\frac{\partial Q}{\partial\beta} &= \nsum \sum_{s=1}^S\text{grad}_{i,t}^{(k)} \\
+\frac{\partial Q}{\partial\delta} &= \nsum \sum_{s=1}^S\text{grad}_{i,t}^{(k)}\times y_{i,t-1}(1 - y_{i,t-1}) \\
+\frac{\partial Q}{\partial\gamma} &= \nsum \sum_{s=1}^S\text{grad}_{i,t}^{(k)} \times \sum_{j \in G_s}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}} \\
+\frac{\partial Q}{\partial\kappa} &= \nsum \sum_{s=1}^S\text{grad}_{i,t}^{(k)} \times -\gamma \sum_{j \in G_s}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}\log(d_{ij} + d_0)}
 \end{split}
 $$ {#eq-newgrads}
 
 and we can directly derive the new gradient for $\phi_t$ as
 
 $$
-\frac{\partial Q}{\partial \phi_t} = \nsum \sum_{s = 1}^S \hat p_i^{(s)} \bigbrak{\psi(\phi_t) - \mu_{i,t}^{(s)} \psi(\mu_{i,t}^{(s)} \phi_t) - (1 - \mu_{i,t}^{(s)}) \psi(\phi_t(1 - \mu_{i,t}^{(s)})) + \mu_{i,t}^{(s)} \log y_{i,t} + (1 - \mu_{i,t}^{(s)}) \log (1 - y_{i,t})}
+\frac{\partial Q}{\partial \phi_t} = \nsum \sum_{k = 1}^K \hat p_i^{(k)} \bigbrak{\psi(\phi_t) - \mu_{i,t}^{(k)} \psi(\mu_{i,t}^{(k)} \phi_t) - (1 - \mu_{i,t}^{(k)}) \psi(\phi_t(1 - \mu_{i,t}^{(k)})) + \mu_{i,t}^{(k)} \log y_{i,t} + \\ (1 - \mu_{i,t}^{(k)}) \log (1 - y_{i,t})}
 $$ {#eq-gradphi}
 
 Initial estimates for $\boldsymbol\theta$ will be the estimated MLEs from the forward model. \newpage
