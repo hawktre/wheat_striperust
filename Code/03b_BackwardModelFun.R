@@ -15,6 +15,7 @@
 
 ## load up the packages we will need:  (uncomment as required)
 library(here)
+library(tidyverse)
 
 ## Read in the needed functions
 source(here("Code/03a_BackwardGradFun.R"))
@@ -22,16 +23,15 @@ source(here("Code/02a_ForwardGradFun.R"))
 
 # Backward Fit ------------------------------------------------------------
 backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits, kappa = NULL) {
-  browser()
+
   # Setup
   intensity <- mod_dat$intensity[, blk, trt, vst]
   intensity_prev <- mod_dat$intensity[, blk, trt, as.numeric(vst) - 1]
   wind <- mod_dat$wind[, , blk, trt, vst]
   dist <- mod_dat$dist
   groups <- mod_dat$groups[, config]
-  non_zero <- which(intensity != 0)
-  n_groups <- readr::parse_number(config)
-  prior <- 1 / n_groups
+  n_groups <- parse_number(config)
+  prior <- rep(1 / n_groups, n_groups)
   
   # Starting values from forward fit (grid search or MLE approach)
   if(!is.null(kappa)){
@@ -51,16 +51,13 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits, kappa = N
   tol <- 1e-6
   q_track <- numeric(max_em_iter)
   
-  # Initial E-step
-  p_mat <- e_step(
-    par = theta,
-    y_current = intensity,
-    y_prev = intensity_prev,
-    wind_matrix = wind,
-    dist_matrix = dist,
-    group_id = groups,
-    prior = prior
-  )
+  # E-step
+
+  ## Compute mu_matrix
+  mu_mat <- get_mu(par = theta, y_prev = intensity_prev, wind_matrix = wind, dist_matrix = dist, group_id = groups)
+
+  ## Compute conditional probability matrix
+  p_mat <- e_step(y_vec = intensity, mu_mat = mu_mat, phi = theta[["phi"]], prior_vec = prior)
   
   # EM loop
   for (em_iter in seq_len(max_em_iter)) {

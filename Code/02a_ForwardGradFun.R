@@ -200,7 +200,11 @@ neg_grad <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01
   d_delta <-  phi * sum(weight * y_prev * (1-y_prev))
   d_gamma <-  phi * sum(weight * dispersal)
   d_kappa <-  phi * sum(weight * (-gamma) * dispersal_grad)
-  d_phi   <-  sum(mu * (y_star - mu_star) + log(1 - y_current) - digamma((1 - mu) * phi) + digamma(phi))
+  d_phi   <-  sum((digamma(phi)) - 
+    mu_vec*(digamma(mu_vec*phi)) - 
+    (1 - mu_vec)*digamma((1- mu_vec)*phi) + 
+    mu_vec*log(y_current) + 
+    (1 - mu_vec)*log(1 - y_current))
   
   # Return negative gradients
   -c(beta = d_beta, delta = d_delta, gamma = d_gamma, kappa = d_kappa, phi = d_phi)
