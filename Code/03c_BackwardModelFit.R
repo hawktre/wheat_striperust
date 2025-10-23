@@ -37,7 +37,6 @@ source(here("Code/03b_BackwardModelFun.R"))
 forward <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
 
-kappa_inner_sum_backward(mod_dat$intensity[,'A', '1', '1'], mod_dat$wind[,,'A', '1', '2'], dist_matrix = mod_dat$dist, d0 = 0.01, kappa = 3, group_id = mod_dat$groups[,"64"])[,1]
 # Set up Indices ----------------------------------------------------------
 blocks <- dimnames(mod_dat$intensity)[["block"]]
 treats <- dimnames(mod_dat$intensity)[["treat"]]

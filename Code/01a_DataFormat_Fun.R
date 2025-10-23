@@ -98,11 +98,13 @@ get_grid <- function(pts_sf, nrow_pts, ncol_pts, name) {
   
   stopifnot(inherits(pts_sf, "sf") && sf::st_geometry_type(pts_sf)[1] == "POINT")
   coords <- st_coordinates(pts_sf)
+  
   # infer spacing (median is robust to tiny jitter)
   dx <- median(diff(sort(unique(coords[,1]))))
   dy <- median(diff(sort(unique(coords[,2]))))
   if (is.na(dx) || dx <= 0) stop("can't infer dx. Are x coordinates identical or only one column?")
   if (is.na(dy) || dy <= 0) stop("can't infer dy. Are y coordinates identical or only one row?")
+  
   # define offset so that polygon centers == point centers
   offset_x <- min(coords[,1]) - dx/2
   offset_y <- min(coords[,2]) - dy/2

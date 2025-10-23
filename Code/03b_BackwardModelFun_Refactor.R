@@ -22,78 +22,84 @@ source(here("Code/03a_BackwardGradFun.R"))
 source(here("Code/02a_ForwardGradFun.R"))
 
 # Backward Fit ------------------------------------------------------------
-backward_fit <- function(intensity, intensity_prev, wind, dist, group_id, theta_init) {
+backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits, kappa = NULL) {
 
-  # Initializations
-  K <- length(unique(group_id)) #Number of mixture components
-  prior <- rep(1/K, K) #Uniform prior
-  theta_mat <- 
-  # Initial E-step
+  # Setup
+  intensity <- mod_dat$intensity[, blk, trt, vst]
+  intensity_prev <- mod_dat$intensity[, blk, trt, as.numeric(vst) - 1]
+  wind <- mod_dat$wind[, , blk, trt, vst]
+  dist <- mod_dat$dist
+  groups <- mod_dat$groups[, config]
+  n_groups <- parse_number(config)
+  prior <- rep(1 / n_groups, n_groups)
   
-  ## Create a matrix of values for theta (n_pars x n_groups)
-  theta_mat <- matrix(theta, nrow = length(theta), ncol = n_groups)
-  rownames(theta_mat) <- names(theta)
-
-  ## Set up convergence criteria and algorithm tracking
+  # Starting values from forward fit (grid search or MLE approach)
+  if(!is.null(kappa)){
+    theta <- initialize_theta(y_cur = intensity, 
+                                   y_prev = intensity_prev, 
+                                   wind_mat = wind, 
+                                   dist_mat = dist, 
+                                   kappa_try = as.numeric(kappa),
+                                   d_0 = 0.01)
+  }else{
+    theta <- forward_fits[block == blk & treat == as.numeric(trt) & visit == as.numeric(vst)
+  ][["theta"]][[1]]
+  }
+  
+  
   max_em_iter <- 1000
   tol <- 1e-6
   q_track <- numeric(max_em_iter)
   
   # E-step
 
-  
+  ## Compute mu_matrix
+  mu_mat <- get_mu(par = theta, y_prev = intensity_prev, wind_matrix = wind, dist_matrix = dist, group_id = groups)
+
+  ## Compute conditional probability matrix
+  p_mat <- e_step(y_vec = intensity, mu_mat = mu_mat, phi = theta[["phi"]], prior_vec = prior)
   
   # EM loop
   for (em_iter in seq_len(max_em_iter)) {
-    # Subset the current values of theta
-    theta_k <- theta_mat[,k]
-
-    #E-step
-    ## Compute mu_matrix
-    mu_mat <- get_mu(par = theta, y_prev = intensity_prev, wind_matrix = wind, dist_matrix = dist, group_id = groups)
-
-    ## Compute conditional probability matrix
-    p_mat <- e_step(y_vec = intensity, mu_mat = mu_mat, phi = theta[["phi"]], prior_vec = prior)
-      
-      for(k in 1:n_groups){
-      fit <- tryCatch(
-        optim(
-          par = theta,
-          fn = Q_fun,
-          gr = m_step_grad,
-          method = "BFGS",
-          control = list(maxit = 1000, reltol = tol),
-          p_mat = p_mat,
-          y_current = intensity,
-          y_prev = intensity_prev,
-          wind_matrix = wind,
-          dist_matrix = dist,
-          group_id = groups
-        ),
-        error = function(e) {
-          message(sprintf(
-            "EM step %d failed in backward_fit [config=%s, block=%s, treat=%s, visit=%s]: %s",
-            em_iter, config, blk, trt, vst, conditionMessage(e)
-          ))
-          
-          stop(e)
-        }
-      )
-      
-      if (is.null(fit) || fit$convergence != 0 || !is.finite(fit$value)) {
-        return(data.table(
-          config = config,
-          block = blk,
-          treat = as.numeric(trt),
-          visit = as.numeric(vst),
-          kappa = kappa,
-          em_iters = em_iter,
-          converged = FALSE,
-          neg_loglik = NA_real_,
-          final_theta = list(theta),
-          p_mat = list(p_mat)
+    for
+    fit <- tryCatch(
+      optim(
+        par = theta,
+        fn = Q_fun,
+        gr = m_step_grad,
+        method = "BFGS",
+        control = list(maxit = 1000, reltol = tol),
+        p_mat = p_mat,
+        y_current = intensity,
+        y_prev = intensity_prev,
+        wind_matrix = wind,
+        dist_matrix = dist,
+        group_id = groups
+      ),
+      error = function(e) {
+        message(sprintf(
+          "EM step %d failed in backward_fit [config=%s, block=%s, treat=%s, visit=%s]: %s",
+          em_iter, config, blk, trt, vst, conditionMessage(e)
         ))
+        
+        stop(e)
       }
+    )
+    
+    if (is.null(fit) || fit$convergence != 0 || !is.finite(fit$value)) {
+      return(data.table(
+        config = config,
+        block = blk,
+        treat = as.numeric(trt),
+        visit = as.numeric(vst),
+        kappa = kappa,
+        em_iters = em_iter,
+        converged = FALSE,
+        neg_loglik = NA_real_,
+        final_theta = list(theta),
+        p_mat = list(p_mat)
+      ))
+    }
     
     #Update parameters
     theta_new <- fit$par
@@ -162,7 +168,7 @@ backward_fit <- function(intensity, intensity_prev, wind, dist, group_id, theta_
     final_theta = list(theta_new),
     p_mat = list(p_mat)
   )
-}
+  
   return(result)
 }
 

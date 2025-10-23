@@ -29,44 +29,35 @@ stripe <- readRDS(here("DataProcessed/experimental/stripe_clean.rds"))
 wind <- readRDS(here("DataProcessed/wind/wind_clean.rds"))
 clusters <- readRDS(here("DataProcessed/experimental/clusters.rds"))
 inocs <- readRDS(here("DataProcessed/experimental/inoc_sp.rds"))
-# Subset intensity data ---------------------------------------------------
-
-stripe.clean <- stripe %>% 
-  select(block, inoculum_total, visit, plant_num, north, east, date, intensity) %>% 
-  rename("treat" = inoculum_total) %>% 
-  mutate(intensity = intensity/100,
-         visit = parse_number(visit)) %>% 
-  arrange(block, treat, visit)
-
 
 # Create intensity array --------------------------------------------------
-n_plants <- length(unique(stripe.clean$plant_num))
-n_blocks <- length(unique(stripe.clean$block))
-n_trt <- length(unique(stripe.clean$treat))
-n_visits <- length(unique(stripe.clean$visit))
+n_plants <- length(unique(stripe$plant_id))
+n_blocks <- length(unique(stripe$block))
+n_trt <- length(unique(stripe$treat))
+n_visits <- length(unique(stripe$visit))
+
 intensity <- array(NA_real_, dim = c(n_plants, n_blocks, n_trt, n_visits),
                    dimnames = list(
                      plant = paste0(1:n_plants),  # no plant names
                      block = LETTERS[1:n_blocks],
-                     treat = paste0(sort(unique(stripe.clean$treat))),
+                     treat = paste0(sort(unique(stripe$treat))),
                      visit = paste0(1:n_visits)))
 
 for (blk in dimnames(intensity)$block) {
   for(trt in dimnames(intensity)$treat){
     for(vst in dimnames(intensity)$visit){
-        intensity[,blk,trt,vst] <- stripe.clean %>% 
+        intensity[,blk,trt,vst] <- stripe %>% 
           filter(block == blk, treat == as.numeric(trt), visit == as.numeric(vst)) %>% pull(intensity)
     }
   }
 }
 
-
-
+head(intensity[,'A', '1',])
 
 # Create Distance and Wind Matrices -------------------
 
 ## Create a df of survey periods
-survey_periods <- stripe.clean %>% 
+survey_periods <- stripe %>% 
   select(block, treat, visit, date) %>% 
   distinct() %>% 
   group_by(block, treat) %>% 
@@ -75,14 +66,20 @@ survey_periods <- stripe.clean %>%
   filter(visit != 1)
 
 ## Distance Matrix
-dist_mat <- stripe.clean %>% 
-  select(plant_num, north, east) %>% 
+dist_mat <- stripe %>% 
+  select(plant_id, north, east) %>% 
   distinct() %>% 
   st_as_sf(coords = c("east", "north")) %>% 
   st_distance()
 
 ## Directional Matrix (for wind)
-coords <- stripe.clean %>% select(plant_num, east, north) %>% distinct() %>% select(-plant_num) %>% as.matrix()
+coords <- stripe %>% 
+  select(plant_id, east, north) %>% 
+  distinct() %>% 
+  arrange(plant_id) |> 
+  select(-plant_id) %>% 
+  as.matrix()
+
 dir_mat <- get_dir(coords)
 
 ## Wind array
@@ -91,7 +88,7 @@ wind_array <- array(NA_real_, dim = c(n_plants, n_plants, n_blocks, n_trt, n_vis
                       NULL,
                       NULL,
                       block = LETTERS[1:n_blocks],
-                      treat = paste0(sort(unique(stripe.clean$treat))),
+                      treat = paste0(sort(unique(stripe$treat))),
                       visit = paste0(2:n_visits)))
 
 
@@ -116,7 +113,7 @@ n_params <- length(param_names)
 kappa_try <- seq(0.25,2.5,0.25)
 
 # Assign Groups (For Backward Model) --------------------------------------
-stripe_sp <- stripe %>% select(plant_num, east, north) %>% distinct() %>% st_as_sf(coords = c("east", "north"))
+stripe_sp <- stripe %>% select(plant_id, east, north) %>% distinct() %>% st_as_sf(coords = c("east", "north"))
 configs <- c("2 x 2", "4 x 2", "2 x 4", "4 x 4", "8 x 8")
 
 ##Create grids (see DataFromat_Funs)
@@ -145,11 +142,11 @@ plant_group <- array(NA_real_, dim = c(n_plants, length(configs)),
                      config = c("4", "8h", "8v", "16", "64")))
 
 for (conf in dimnames(plant_group)$config) {
-  plant_group[,conf] <- grids[[conf]][["points"]][["grid_id"]]
+  plant_group[,conf] <- grids[[conf]][["points"]] |> arrange(plant_id) |> pull(grid_id)
 }
 
-single_inocs <- inocs %>% select(block, inoculum_total, geometry) %>% 
-  filter(inoculum_total == 1)
+single_inocs <- inocs %>% select(block, treat, inoc_id, geometry) %>% 
+  filter(treat == 1)
 
 true_infect <- array(NA_real_, dim = c(n_blocks, length(configs)),
                      dimnames = list(block = LETTERS[1:n_blocks],
@@ -157,15 +154,16 @@ true_infect <- array(NA_real_, dim = c(n_blocks, length(configs)),
 for (blk in dimnames(true_infect)$block) {
   for (conf in dimnames(true_infect)$config) {
     true_infect[blk,conf] <- single_inocs %>% filter(block == blk) %>% 
-      st_join(grids[[conf]][["grid"]]) %>% .$grid_id
+      st_join(grids[[conf]][["grid"]]) %>% pull(grid_id)
   }
 }
 
 grids$`16`$grid |> 
   ggplot()+
   geom_sf(fill = "transparent")+
-  geom_sf_label(aes(label = grid_id)) + 
-  geom_sf(data = single_inocs, aes(color = block))
+  geom_sf_text(aes(label = grid_id))+
+  geom_sf(data = single_inocs)+
+  facet_wrap(~block, nrow = 1)
 
 # Create Final List -------------------------------------------------------
 

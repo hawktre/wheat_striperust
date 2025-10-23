@@ -15,6 +15,50 @@
 logit <- function(p) log(p / (1 - p))
 inv_logit <- function(x) 1 / (1 + exp(-x))
 
+# Dispersal function ------------------------------------------------------
+kappa_inner_sum_backward <- function(par, y_prev, wind_mat, dist_mat, d0 = 0.01, derivative = FALSE, group_id) {
+  
+  n <- length(y_prev)
+  groups <- sort(unique(group_id))
+  K <- length(groups)
+  
+  # Compute shifted distance matrix and dispersal kernel
+  dist_shifted <- dist_mat + d0
+  log_dist <- log(dist_shifted)
+  kernel_mat <- dist_shifted^(-par[['kappa']])
+  
+  # Element-wise dispersal term
+  y_mat <- matrix(y_prev, nrow = n, ncol = n, byrow = TRUE)
+  spread_mat <- y_mat * wind_mat * kernel_mat
+  
+  if (derivative) {
+    spread_mat <- spread_mat * log_dist
+  }
+  
+  diag(spread_matrix) <- 0  # remove self-contribution
+  
+  # Initialize result matrix: one column per group s
+  dispersal_mat <- matrix(0, nrow = n, ncol = K)
+  
+  for (k in seq_along(groups)) {
+    group_mask_vec <- as.numeric(group_id == groups[k])  # length-n vector
+    dispersal_mat[, k] <- spread_matrix %*% group_mask_vec  # matrix-vector product
+  }
+  
+  return(dispersal_mat)  # n x K matrix of dispersal from each group
+}
+ # Mean function -----------------------------------------------------------
+get_mu <- function(par, auto, dispersal) {
+
+  #Compute linear predictor
+  eta <- par[['beta']] + par[['delta']] * auto + gamma * dispersal
+  
+  #invers-logit
+  mu  <- inv_logit(eta_mat)
+  
+  return(pmin(pmax(mu_mat, 1e-8), 1 - 1e-8))
+}
+
 # Compute Likelihood ---------------------------------------------------------
 loglik_zibeta <- function(y_vec, mu_vec, phi, sum = TRUE, log = TRUE) {
   
@@ -49,67 +93,6 @@ loglik_zibeta <- function(y_vec, mu_vec, phi, sum = TRUE, log = TRUE) {
   
   return(out)
 }
-
-
-# Dispersal function ------------------------------------------------------
-kappa_inner_sum_backward <- function(y_prev, wind_matrix, dist_matrix, d0 = 0.01, kappa, 
-                            derivative = FALSE, group_id) {
-  n <- length(y_prev)
-  groups <- sort(unique(group_id))
-  S <- length(groups)
-  
-  # Compute shifted distance matrix and dispersal kernel
-  dist_shifted <- dist_matrix + d0
-  log_dist <- log(dist_shifted)
-  kernel <- dist_shifted^(-kappa)
-  
-  # Element-wise dispersal term
-  y_mat <- matrix(y_prev, nrow = n, ncol = n, byrow = TRUE)
-  spread_matrix <- y_mat * wind_matrix * kernel
-  
-  if (derivative) {
-    spread_matrix <- spread_matrix * log_dist
-  }
-  
-  diag(spread_matrix) <- 0  # remove self-contribution
-  
-  # Initialize result matrix: one column per group s
-  dispersal_mat <- matrix(0, nrow = n, ncol = S)
-  
-  for (s in seq_along(groups)) {
-    group_mask_vec <- as.numeric(group_id == groups[s])  # length-n vector
-    dispersal_mat[, s] <- spread_matrix %*% group_mask_vec  # matrix-vector product
-  }
-  
-  return(dispersal_mat)  # n x S matrix of dispersal from each group
-}
- # Mean function -----------------------------------------------------------
-get_mu <- function(par, y_prev, wind_matrix, dist_matrix, group_id) {
-  beta  <- par["beta"]
-  delta <- par["delta"]
-  gamma <- par["gamma"]
-  kappa <- par["kappa"]
-  phi   <- par["phi"]
-  
-  
-  #Compute Covariates
-  ## Dispersal 
-  dispersal_mat <- kappa_inner_sum_backward(y_prev, wind_matrix, dist_matrix, kappa, group_id = group_id)
-  
-  n <- length(y_prev)
-  S <- ncol(dispersal)
-  
-  ## Auto-infection
-  auto_vec <- y_prev * (1 - y_prev)
-  auto_mat <- matrix(auto_vec, nrow = n, ncol = S)  # broadcast across columns
-  
-  
-  eta_mat <- beta + delta * auto_mat + gamma * dispersal_mat
-  mu_mat  <- inv_logit(eta_mat)
-  
-  return(pmin(pmax(mu_mat, 1e-6), 1 - 1e-6))  # Clip for stability. Returns an n x S matrix
-}
-
 Q_fun <- function(y_vec, mu_mat, phi, p_mat, pi_vec) {
   #Compute weighted likelihood matrix
   lik_mat <- apply(mu_mat, 2, function(x) loglik_zibeta(y_vec, x, phi, sum = F, log = T))
