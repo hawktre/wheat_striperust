@@ -27,12 +27,15 @@ library(here)
 source(here("Code/02a_ForwardGradFun.R"))
 
 # Forward Fits -------------------------------------------------------------
-forward_fit <- function(blk, trt, vst, mod_dat, dist, kappa_try) {
+forward_fit <- function(blk, trt, vst, mod_dat, kappa_try) {
+  
+  ## Extract needed data
+  intensity <- mod_dat$intensity[,blk,trt,vst]
+  intensity_prev <- mod_dat$intensity[,blk,trt,as.numeric(vst)-1]
+  wind <- mod_dat$wind[,,blk,trt,vst]
+  dist <- mod_dat$dist
 
   ## Extract Needed Model Data
-  intensity <- mod_dat$intensity[, blk, trt, vst]
-  intensity_prev <- mod_dat$intensity[, blk, trt, as.numeric(vst) - 1]
-  wind <- mod_dat$wind[, , blk, trt, vst]
   non_zero <- which(intensity > 0)
   
   ## Set up strage for temproary results
@@ -40,11 +43,11 @@ forward_fit <- function(blk, trt, vst, mod_dat, dist, kappa_try) {
   
   for (kappa in kappa_try) {
     #Generate initial values for current kappa in grid search
-    init_theta <- initialize_theta(y_cur = intensity, 
+    init_theta <- initialize_theta(y = intensity, 
                                    y_prev = intensity_prev, 
                                    wind_mat = wind, 
                                    dist_mat = dist, 
-                                   kappa_try = as.numeric(kappa),
+                                   kappa = as.numeric(kappa),
                                    d_0 = 0.01)
     
     fit <- tryCatch(
@@ -113,8 +116,7 @@ get_fitted <- function(blk, trt, vst, par, alpha, mod_dat, d0 = 0.01) {
   delta <- par["delta"]
   gamma <- par["gamma"]
   kappa <- par["kappa"]
-  phi   <- par["phi"]
-  
+
   
   #Compute Covariates
   ## Dispersal 
@@ -137,27 +139,29 @@ get_fitted <- function(blk, trt, vst, par, alpha, mod_dat, d0 = 0.01) {
 
 # Forward Model Deviance Residuals ----------------------------------------
 compute_deviance_resid <- function(blk, trt, vst, par, alpha, fitted, data) {
-
-  y <- data$intensity[,blk, trt, vst]
+  y <- data$intensity[, blk, trt, vst]
   mu_hat <- fitted
-  phi_hat <- par[["phi"]] 
+  phi_hat <- exp(par[["phi"]])
   
-  is_pos <- which(y > 0)
-  is_zero <- which(y == 0)
-
-  ll_fit <- numeric(length(y))
-  ll_sat <- numeric(length(y))
+  # Separate zero and nonzero cases
+  nonzero <- which(y > 0)
   
-  # Zero values
-  ll_fit[is_zero] <- log(alpha)
-  ll_sat[is_zero] <- log(alpha)  # same since model fits perfectly
+  # Fitted log-likelihood for all data (ZIBeta handles zeros fine)
+  ll_fit <- loglik_zibeta(y, mu_hat, phi_hat, sum = FALSE)
   
-  # Positive values
-  ll_fit[is_pos] <- loglik_zibeta(y[is_pos], mu_hat[is_pos], phi_hat, sum = FALSE)
-  ll_sat[is_pos] <- loglik_zibeta(y[is_pos], y[is_pos], phi_hat, sum = FALSE)
+  # Saturated log-likelihood:
+  ll_sat <- ll_fit
+  if (length(nonzero) > 0) {
+    # For nonzero observations, mu_tilde = y_t (but clip for numerical safety)
+    y_nz <- pmin(pmax(y[nonzero], 1e-6), 1 - 1e-6)
+    ll_sat[nonzero] <- loglik_zibeta(y_nz, y_nz, phi_hat, sum = FALSE)
+  }
   
+  # Deviance residuals
   sqrt_term <- pmax(0, 2 * (ll_sat - ll_fit))
-  sign(y - (1 - alpha) * mu_hat) * sqrt(sqrt_term)
+  r_d <- sign(y - mu_hat) * sqrt(sqrt_term)
+  
+  return(r_d)
 }
 
 

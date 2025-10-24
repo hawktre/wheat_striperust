@@ -46,10 +46,10 @@ kappa_inner_sum <- function(y_prev, wind_matrix, dist_matrix, d0, kappa, derivat
 
 # --- Initialization ---
 
-initialize_theta <- function(y_cur, y_prev, wind_mat, dist_mat, d_0, kappa_try) {
+initialize_theta <- function(y, y_prev, wind_mat, dist_mat, d_0, kappa) {
 
   #Subset non-zero observations
-  non_zero <- which(y_cur > 0)
+  non_zero <- which(y > 0)
   
   #Construct the design matrix
   X1 <- y_prev * (1- y_prev)
@@ -60,10 +60,9 @@ initialize_theta <- function(y_cur, y_prev, wind_mat, dist_mat, d_0, kappa_try) 
                         dist_matrix = dist_mat,
                         d0 = d_0,
                         derivative = FALSE,
-                        kappa = kappa_try
-  )
+                        kappa = kappa)
   
-  mod_df <- data.frame(y = logit(y_cur[non_zero]),
+  mod_df <- data.frame(y = logit(y[non_zero]),
                        X1 = X1[non_zero],
                        X2 = X2[non_zero])
   
@@ -72,15 +71,9 @@ initialize_theta <- function(y_cur, y_prev, wind_mat, dist_mat, d_0, kappa_try) 
   
     
   #total samples
-  n <- length(y_prev)
-  
-  # degrees of freedom
+  n <- length(y[non_zero])
   df <- n - length(coef(fit)) + 1
-  
-  # predicted values 
   mu <- inv_logit(fitted(fit))
-  
-  #SSR of model fit
   ssr <- sum(resid(fit)^2)
   
   #Weight for residual variance
@@ -94,6 +87,7 @@ initialize_theta <- function(y_cur, y_prev, wind_mat, dist_mat, d_0, kappa_try) 
   
   #return phi
   phi <- mean((mu*(1-mu))/sigma_hat) - 1
+  phi <- max(phi, 1e-6)
   
   # Extract coefficients
   coef_vec <- coef(fit)
@@ -103,14 +97,13 @@ initialize_theta <- function(y_cur, y_prev, wind_mat, dist_mat, d_0, kappa_try) 
     beta  = coef_vec[["(Intercept)"]],
     delta = coef_vec[["X1"]],
     gamma = coef_vec[["X2"]],
-    kappa = kappa_try,
-    phi   = phi
+    kappa = kappa,
+    phi   = log(phi)
   )
- 
-  
   return(theta)
   
 }
+
 # --- function for log-likelihood (see Ospina & Ferrari) ---
 loglik_zibeta <- function(y, mu, phi, sum = TRUE, log = TRUE) {
   
@@ -126,7 +119,7 @@ loglik_zibeta <- function(y, mu, phi, sum = TRUE, log = TRUE) {
   for(i in 1:length(y)){
     if(y[i] == 0){
       ll[i] <- log(alpha)
-    }else{
+    } else {
       a <- mu[i] * phi
       b <- (1 - mu[i]) * phi
       ll[i] <- log(1 - alpha) +
@@ -153,19 +146,16 @@ neg_loglik <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.
   delta <- par["delta"]
   gamma <- par["gamma"]
   kappa <- par["kappa"]
-  phi   <- par["phi"]
+  log_phi <- par["phi"]
 
-  # Subset to non-zero observations
-  non_zero <- which(y_current > 0)
-
-  #Compute fitted values for non-zero part
-  dispersal <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa)[non_zero]
-  y_prev <- y_prev[non_zero] #Subset to non-zero observations
-  eta <- beta + delta * (y_prev*(1-y_prev)) + gamma * dispersal
+  #Compute fitted values 
+  dispersal <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa)
+  auto <- y_prev * (1-y_prev)
+  eta <- beta + delta * auto + gamma * dispersal
   mu  <- inv_logit(eta)
   mu <- pmin(pmax(mu, 1e-6), 1 - 1e-6)
-  phi <- pmax(phi, 1e-6)
-  
+  phi <- exp(log_phi)
+
   -loglik_zibeta(y_current, mu, phi)
 }
 
@@ -175,10 +165,11 @@ neg_grad <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01
   delta <- par["delta"]
   gamma <- par["gamma"]
   kappa <- par["kappa"]
-  phi   <- par["phi"]
-  
+  log_phi <- par["phi"]
+  phi <- exp(log_phi)
+
   #Only Non-zero observations
-  non_zero <- which(y_current != 0)
+  non_zero <- which(y_current > 0)
 
   #Compute dispersal terms
   dispersal <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa)[non_zero]
@@ -187,7 +178,8 @@ neg_grad <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01
   #Compute fitted values (and clamp if necessary)
   y_current <- y_current[non_zero]
   y_prev <- y_prev[non_zero]
-  eta <- beta + delta * (y_prev * (1-y_prev)) + gamma * dispersal
+  auto <- y_prev * (1-y_prev)
+  eta <- beta + delta * auto + gamma * dispersal
   mu  <- inv_logit(eta)
   mu <- pmin(pmax(mu, 1e-6), 1 - 1e-6)
 
@@ -197,14 +189,10 @@ neg_grad <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01
   weight <- (y_star - mu_star) * mu * (1 - mu)
   
   d_beta  <-  phi * sum(weight)
-  d_delta <-  phi * sum(weight * y_prev * (1-y_prev))
+  d_delta <-  phi * sum(weight * auto)
   d_gamma <-  phi * sum(weight * dispersal)
   d_kappa <-  phi * sum(weight * (-gamma) * dispersal_grad)
-  d_phi   <-  sum((digamma(phi)) - 
-    mu_vec*(digamma(mu_vec*phi)) - 
-    (1 - mu_vec)*digamma((1- mu_vec)*phi) + 
-    mu_vec*log(y_current) + 
-    (1 - mu_vec)*log(1 - y_current))
+  d_phi   <-  sum((digamma(phi)) - mu*(digamma(mu*phi)) - (1 - mu)*digamma((1- mu)*phi) + mu*log(y_current) + (1 - mu)*log(1 - y_current)) * phi
   
   # Return negative gradients
   -c(beta = d_beta, delta = d_delta, gamma = d_gamma, kappa = d_kappa, phi = d_phi)

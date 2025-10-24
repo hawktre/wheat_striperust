@@ -47,12 +47,13 @@ for (blk in dimnames(intensity)$block) {
   for(trt in dimnames(intensity)$treat){
     for(vst in dimnames(intensity)$visit){
         intensity[,blk,trt,vst] <- stripe %>% 
-          filter(block == blk, treat == as.numeric(trt), visit == as.numeric(vst)) %>% pull(intensity)
+          filter(block == blk, treat == as.numeric(trt), visit == as.numeric(vst)) %>% 
+          arrange(plant_id) |> pull(intensity)
     }
   }
 }
 
-head(intensity[,'A', '1',])
+intensity[,'A', '1', '2']
 
 # Create Distance and Wind Matrices -------------------
 
@@ -69,6 +70,7 @@ survey_periods <- stripe %>%
 dist_mat <- stripe %>% 
   select(plant_id, north, east) %>% 
   distinct() %>% 
+  arrange(plant_id) |> 
   st_as_sf(coords = c("east", "north")) %>% 
   st_distance()
 

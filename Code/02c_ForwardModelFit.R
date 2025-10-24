@@ -48,15 +48,13 @@ combos <- expand.grid(
   visit = visits[2:length(visits)],
   stringsAsFactors = FALSE
 )
-# Set up data -------------------------------------------------------------
-dist <- mod_dat$dist #doesn't change
 
 # Fit the model -----------------------------------------------------------
 
 start <- Sys.time()
 free_fits <- pmap(
   combos,
-  ~forward_fit(..1, ..2, ..3, mod_dat, dist, kappa_try)
+  ~forward_fit(..1, ..2, ..3, mod_dat, kappa_try)
 ) %>% rbindlist()
 end <- Sys.time()
 runtime <- difftime(end, start, units = "mins")  # could be "mins", "hours", etc.

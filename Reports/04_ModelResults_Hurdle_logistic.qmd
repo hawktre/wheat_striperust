@@ -146,7 +146,7 @@ library(gt)
 stripe <- readRDS(here("DataProcessed/experimental/stripe_clean.rds"))
 
 stripe_summary <- stripe %>% 
-  group_by(plotID_new, visit) %>% 
+  group_by(plot, visit) %>% 
   summarise(mean_disease = paste0(round(mean(intensity), 2), "(", round(sd(intensity), 2), ")"),
             zeros = paste0(sum(intensity == 0), "(", round(sum(intensity == 0)/n(), 3), ")"),
             .groups = "drop") %>% 
@@ -158,7 +158,7 @@ summary_wide <- stripe_summary %>%
     names_from = visit,
     values_from = c(mean_disease, zeros)
   ) %>% 
-  select(-c(zeros_visit3, zeros_visit4, zeros_visit5))
+  dplyr::select(-c(zeros_3, zeros_4, zeros_5))
 
 # make gt table
 summary_wide %>%
@@ -174,7 +174,7 @@ summary_wide %>%
   cols_label(
     .list = setNames(
       nm = names(summary_wide)[-1],
-      object = gsub(".*_", "", names(summary_wide)[-1])  # clean column names
+      object = gsub(".*_", "Visit ", names(summary_wide)[-1])  # clean column names
     )
   )
 
@@ -192,13 +192,12 @@ wind <- readRDS(here("DataProcessed/wind/wind_clean.rds"))
 
 #Create the lagged dataset
 stripe.lag <- stripe %>% 
-  arrange(plotID_new, plant_num, visit) %>% 
+  arrange(plot, plant_id, visit) %>% 
   group_by(plant_id) %>%
-  mutate(intensity = intensity/100,
-         intensity_prev = lag(intensity),
+  mutate(intensity_prev = lag(intensity),
          date_prev = lag(date)) %>% 
   ungroup() %>% 
-  filter(visit != "visit1")
+  filter(visit != 1)
 
 #Set survey periods 
 survey_periods <- stripe.lag %>% 
@@ -269,7 +268,8 @@ plot_theta <- function(fits, title){
   #Pivot-longer for tables and plotting
   theta_long <- fits %>%
     dplyr::select(block, treat, visit, theta) %>%
-    unnest_wider(theta) %>%         # Step 2: unpack theta list column
+    unnest_wider(theta) %>%
+    mutate(phi = exp(phi)) |> 
     pivot_longer(
       cols = c(beta, delta, gamma, kappa, phi),  # adjust if other parameters present
       names_to = "parameter",
@@ -309,7 +309,8 @@ We also provide a tabular summary of the mode estimates in @tbl-params. One nota
 #| tbl-cap: "Tabular parameter estimes reported for each transition (e.g. 'Visit 2' denotes the transition from 'Visit 1' to 'Visit 2') on the log-odds scale, matching with @fig-params. Red rows indicate $\\hat\\kappa < 0$."
 params_df <- fits %>%
   dplyr::select(block, treat, visit, theta) %>%
-  unnest_wider(theta)
+  unnest_wider(theta) |> 
+  mutate(phi = exp(phi))
 
 params_df %>% 
   kableExtra::kable(
