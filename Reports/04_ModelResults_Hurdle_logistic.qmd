@@ -342,32 +342,21 @@ library(ggpubr)
 #Create a dataframe with all of the predicted results and true values
 df <- fits %>% 
   select(block, treat, visit, fitted) %>% 
-  unnest_longer(fitted, indices_to = "plant_id") %>% 
-  mutate(plant_id = as.numeric(plant_id),
-         treat = as.numeric(treat))
-
-stripe_long <- stripe %>% 
-  select(block, inoculum_total, visit, plant_num, intensity, east, north) %>% 
-  st_as_sf(coords = c("east", "north")) %>% 
-  mutate(intensity = intensity/100,
-         visit = as.character(parse_number(visit)),
-         plant_num = as.numeric(plant_num)) %>% 
-  rename(treat = inoculum_total,
-         plant_id = plant_num)
+  unnest_longer(fitted, indices_to = "plant_id") |> 
+  mutate(plant_id = as.numeric(plant_id))
 
 #Join with unique plant id's and spatial coordinates
-plot_df <- left_join(df, stripe_long, by = c("block", "treat", "visit", "plant_id")) %>% 
-  select(block, treat, visit, plant_id, fitted, intensity, geometry) %>% 
-  st_as_sf() %>% 
+plot_df <- stripe |> st_as_sf(coords = c('east','north')) |> 
+  left_join(df, by = c("block", "treat", "visit", "plant_id")) %>% 
+  select(block, treat, visit, plant_id, intensity, fitted, geometry) %>% 
+  filter(visit != 1) |> 
   rename(predicted = fitted,
-         true = intensity) %>% 
-  pivot_longer(cols = c("predicted", "true"), values_to = "intensity", names_to = "type")
+         true = intensity) |> 
+          arrange(block, treat, visit, plant_id) |> 
+          pivot_longer(cols = c(true, predicted), names_to = "type", values_to = "intensity")
 
 #read in inoculation spatial data
-inoc_sp <- readRDS(here("DataProcessed/experimental/inoc_sp.rds")) %>% 
-  select(block, inoculum_total, inoculum_num, geometry) %>% 
-  rename(treat = inoculum_total,
-         id = inoculum_num)
+inoc_sp <- readRDS(here("DataProcessed/experimental/inoc_sp.rds")) 
 
 
 
@@ -415,16 +404,12 @@ We can also examine the deviance residuals [@ferrari2004a] for the same block (@
 
 df_resid <- fits %>% 
   select(block, treat, visit, resid) %>% 
-  unnest_longer(resid, indices_to = "plant_id") %>% 
-  mutate(plant_id = as.numeric(plant_id),
-         treat = as.numeric(treat))
+  unnest_longer(resid, indices_to = "plant_id") |> 
+  mutate(plant_id = as.numeric(plant_id))
 
-df_resid_plt <- left_join(df, df_resid, by = c("block", "treat", "visit", "plant_id"))
-
-df_resid_sp <- left_join(df_resid_plt, stripe_long, by = c("block", "treat", "visit", "plant_id")) %>% 
-  st_as_sf()
+df_fitted_resid <- left_join(df, df_resid, by = c("block", "treat", "visit", "plant_id"))
   
-df_resid_plt %>% 
+df_fitted_resid %>% 
 filter(block == "B") %>% 
   ggplot(aes(x = fitted, y = resid)) +
   geom_point() +
@@ -446,30 +431,37 @@ From @fig-resid, we see no particular pattern in the residuals. It is note-worth
 #| fig-cap: "Spatial data representation, color-coded by residual value. Red indicates a high residual. Plants with a an absolute residual > 3 are labeled."
 
 library(ggrepel)
+#Create a spatial residual df
+
+df_resid_sp <- left_join(df_resid, stripe, by = c("block", "treat", "visit", "plant_id")) |> 
+  st_as_sf(coords = c("east", "north"))
+
 # Filter for the block we want
 stripe.dat.B <- df_resid_sp %>% filter(block == "B", visit %in% c(2, 3))
 inoc.dat.B <- inoc_sp %>% filter(block == "B")
 
 intensity_cols <- wesanderson::wes_palette(name = "Zissou1", n = 5, type = "continuous") 
-  #Plot using raw intesity to color
-  ggplot()+
-    geom_sf(data = stripe.dat.B , aes(color = resid), size = 3)+
-    geom_sf_label(data = stripe.dat.B %>% filter(abs(resid) > 3),
-                 aes(label = plant_id),
-                 size = 2, 
-                 nudge_x = 1.5,
-                 nudge_y = -1)+
-    geom_sf(data = inoc.dat.B, 
-            aes(fill = "Inoculation Point"), 
-            shape = 23, size = 3, alpha = 0.7)+
-    facet_grid(rows = vars(treat), cols = vars(visit))+
-    labs(fill = "",
-         color = "Deviance Residual",
-         title = paste0("Deviance Residuals in Space (Block B)"))+
-    theme_grey()+
-    scale_color_gradient(low = intensity_cols[1], high = intensity_cols[5])+
-    theme(legend.position = "right")
+
+#Plot using raw intesity to color
+ggplot()+
+  geom_sf(data = stripe.dat.B , aes(color = resid), size = 3)+
+  geom_sf_label(data = stripe.dat.B %>% filter(abs(resid) > 3),
+                aes(label = plant_id),
+                size = 2.5, 
+                nudge_x = 1.5,
+                nudge_y = -1.5)+
+  geom_sf(data = inoc.dat.B, 
+          aes(fill = "Inoculation Point"), 
+          shape = 23, size = 3, alpha = 0.7)+
+  facet_grid(rows = vars(treat), cols = vars(visit))+
+  labs(fill = "",
+        color = "Deviance Residual",
+        title = paste0("Deviance Residuals in Space (Block B)"))+
+  theme_grey()+
+  scale_color_gradient(low = intensity_cols[1], high = intensity_cols[5])+
+  theme(legend.position = "right")
 ```
+
 @fig-highresid visualizes residual values in space and shows us that those plants who are severely underpredicted are often those that are closest to the sources. 
 
 # Discussion
@@ -503,7 +495,7 @@ ggarrange(plotlist = list(plt_a1, plt_a2, plt_a4), nrow = 3, ncol = 1)
 ```{r}
 #| fig-width: 10
 ### Residuals
-df_resid_sp %>% 
+df_fitted_resid %>% 
   filter(block == "A") %>% 
   ggplot(aes(x = fitted, y = resid))+
   geom_point()+
@@ -526,7 +518,7 @@ ggarrange(plotlist = list(plt_c1, plt_c2, plt_c4), nrow = 3, ncol = 1)
 
 ```{r}
 #| fig-width: 10
-df_resid_sp %>% 
+df_fitted_resid  %>% 
   filter(block == "C") %>% 
   ggplot(aes(x = fitted, y = resid))+
   geom_point()+
@@ -549,7 +541,7 @@ ggarrange(plotlist = list(plt_d1, plt_d2, plt_d4), nrow = 3, ncol = 1)
 
 ```{r}
 #| fig-width: 10
-df_resid_sp %>% 
+df_fitted_resid  %>% 
   filter(block == "D") %>% 
   ggplot(aes(x = fitted, y = resid))+
   geom_point()+
