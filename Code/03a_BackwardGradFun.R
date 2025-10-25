@@ -17,86 +17,91 @@ inv_logit <- function(x) 1 / (1 + exp(-x))
 
 # Dispersal function ------------------------------------------------------
 kappa_inner_sum_backward <- function(par, y_prev, wind_mat, dist_mat, d0 = 0.01, derivative = FALSE, group_id) {
-  
-  n <- length(y_prev)
-  groups <- sort(unique(group_id))
-  K <- length(groups)
-  
-  # Compute shifted distance matrix and dispersal kernel
-  dist_shifted <- dist_mat + d0
-  log_dist <- log(dist_shifted)
-  kernel_mat <- dist_shifted^(-par[['kappa']])
-  
-  # Element-wise dispersal term
-  y_mat <- matrix(y_prev, nrow = n, ncol = n, byrow = TRUE)
-  spread_mat <- y_mat * wind_mat * kernel_mat
-  
-  if (derivative) {
-    spread_mat <- spread_mat * log_dist
-  }
-  
-  diag(spread_matrix) <- 0  # remove self-contribution
-  
-  # Initialize result matrix: one column per group s
-  dispersal_mat <- matrix(0, nrow = n, ncol = K)
-  
-  for (k in seq_along(groups)) {
-    group_mask_vec <- as.numeric(group_id == groups[k])  # length-n vector
-    dispersal_mat[, k] <- spread_matrix %*% group_mask_vec  # matrix-vector product
-  }
-  
-  return(dispersal_mat)  # n x K matrix of dispersal from each group
-}
- # Mean function -----------------------------------------------------------
-get_mu <- function(par, auto, dispersal) {
 
-  #Compute linear predictor
-  eta <- par[['beta']] + par[['delta']] * auto + gamma * dispersal
-  
-  #invers-logit
-  mu  <- inv_logit(eta_mat)
-  
-  return(pmin(pmax(mu_mat, 1e-8), 1 - 1e-8))
+n <- length(y_prev)
+groups <- sort(unique(group_id))
+K <- length(groups)
+
+# Compute shifted distance matrix and dispersal kernel
+dist_shifted <- dist_mat + d0
+log_dist <- log(dist_shifted)
+kernel_mat <- dist_shifted^(-par[['kappa']])
+
+# Element-wise dispersal term
+y_mat <- matrix(y_prev, nrow = n, ncol = n, byrow = TRUE)
+spread_mat <- y_mat * wind_mat * kernel_mat
+
+if (derivative) {
+  spread_mat <- spread_mat * log_dist
+}
+
+diag(spread_matrix) <- 0  # remove self-contribution
+
+# Initialize result matrix: one column per group s
+dispersal_mat <- matrix(0, nrow = n, ncol = K)
+
+for (k in seq_along(groups)) {
+  group_mask_vec <- as.numeric(group_id == groups[k])  # length-n vector
+  dispersal_mat[, k] <- spread_matrix %*% group_mask_vec  # matrix-vector product
+}
+
+return(dispersal_mat)  # n x K matrix of dispersal from each group
+}
+
+# Mean function -----------------------------------------------------------
+get_mu <- function(par, y_prev, dispersal) {
+
+#Compute Autoinfection
+auto <- y_prev * (1 - y_prev)
+#Compute linear predictor
+eta <- par[['beta']] + par[['delta']] * auto + gamma * dispersal
+
+#invers-logit
+mu  <- inv_logit(eta)
+
+return(pmin(pmax(mu, 1e-6), 1 - 1e-6))
 }
 
 # Compute Likelihood ---------------------------------------------------------
-loglik_zibeta <- function(y_vec, mu_vec, phi, sum = TRUE, log = TRUE) {
-  
+loglik_zibeta <- function(y, mu, phi, sum = TRUE, log = TRUE) {
+
   # Gather Fixed Terms
-  n <- length(y_vec)
+  n <- length(y)
 
   # Estimate alpha (zero-inflation term)
-  alpha <- mean(y_vec == 0)
+  alpha <- mean(y == 0)
 
   # Prepare per-observation log-likelihood vector
   ll <- numeric(n)
 
-  for(i in 1:length(y_vec)){
-    if(y_vec[i] == 0){
-      ll[i] <- log(alpha)
-    }else{
-      a <- mu_vec[i] * phi
-      b <- (1 - mu_vec[i]) * phi
-      ll[i] <- log(1 - alpha) +
-      (lgamma(phi) - lgamma(a) - lgamma(b) ) +
-      (a - 1) * log(y_vec[i]) +
-      (b - 1) * log(1 - y_vec[i])
-    }
+  for(i in 1:length(y)){
+  if(y[i] == 0){
+    ll[i] <- log(alpha)
+  } else {
+    a <- mu[i] * phi
+    b <- (1 - mu[i]) * phi
+    ll[i] <- log(1 - alpha) +
+    (lgamma(phi) - lgamma(a) - lgamma(b) ) +
+    (a - 1) * log(y[i]) +
+    (b - 1) * log(1 - y[i])
+  }
   }
 
   if (sum) {
-    out <- sum(ll)
-    if (!log) out <- exp(out)   # exponentiate after sum
+  out <- sum(ll)
+  if (!log) out <- exp(out)   # exponentiate after sum
   } else {
-    out <- if (log) ll else exp(ll)  # return vector
+  out <- if (log) ll else exp(ll)  # return vector
   }
-  
+
   return(out)
 }
+
+# Function to compute Q (expected log-likelihood)
 Q_fun <- function(y_vec, mu_mat, phi, p_mat, pi_vec) {
   #Compute weighted likelihood matrix
   lik_mat <- apply(mu_mat, 2, function(x) loglik_zibeta(y_vec, x, phi, sum = F, log = T))
-  
+
   #compute Q-val
   Q_val <- sum(p_mat * lik_mat) + sum(p_mat * pi_vec)
 
@@ -104,10 +109,10 @@ Q_fun <- function(y_vec, mu_mat, phi, p_mat, pi_vec) {
 }
 
 # E-step ------------------------------------------------------------------
-e_step <- function(y_vec, mu_mat, phi, prior_vec){
+e_step <- function(y, mu_mat, phi, prior_vec){
   
   # Initialize weighted likelihood matrix
-  wl_mat <- prior_vec * apply(mu_mat, 2, function(x) loglik_zibeta(y_vec, x, phi, sum = F, log = F))
+  wl_mat <- prior_vec * apply(mu_mat, 2, function(x) loglik_zibeta(y, x, phi, sum = F, log = F))
   
   #Compute posterior probabilities
   p_mat <- wl_mat / rowSums(wl_mat)
