@@ -65,7 +65,7 @@ get_wind_mat <- function(first_day, last_day, wind, dir.mat){
   wind_speeds <- wind.tmp[['speed']]
   
   #initialize an empty matrix
-  wind_projection_matrix <- matrix(NA, nrow = nrow(dir.mat), ncol = ncol(dir.mat))
+  wind_projection_matrix <- matrix(0, nrow = nrow(dir.mat), ncol = ncol(dir.mat))
   
   for (i in 1:nrow(dir.mat)) {
     for (j in 1:ncol(dir.mat)) {

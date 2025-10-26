@@ -159,22 +159,28 @@ $$
 Q(\Theta; \Theta^{(h)}) = E_{Z}\bigbrak{\log p \bigpar{\mathbf{Y}, \mathbf{Z} \mid \Theta}}
 $${#eq-estep}
 
+With some manipulation, it can equivalently be written: 
+
+$$
+Q(\Theta, \Theta^{(h)}) = \nsum \sum_{k = 1}^K p_{ik} \bigbrak{\log p\bigpar{y_i \mid z_i = k} + \log\pi_k}
+$$
+
+Where 
+
+  1. $p_{ik} = p(z_i = k \mid y_i, \Theta)$: The posterior probability that component $k$ is responsible for infection of sample unit $i$ with $\sum_k p_{ik} = 1$
+  2. $P(y_i | z_i = k) = \mathrm{ZIB}\bigpar{y_i ; \alpha_t, \mu_{i,t}^{(k)}, \phi_t}$ is the ZIB distribution assuming infection from component $k$ (@eq-meanmod2)
+  3. $\pi_k = p\bigpar{Z_i = k}$: The marginal probability of $Z_i$ 
+
+We initialize the marginal probability uniformly as $\pi_k^{(1)} = \frac{1}{k}$, and $\mu_{itk}$ as in @eq-meanmod2. We update $p_{ik}$ at each iteration as 
+
+$$
+p_{ik}^{(h + 1)} = \frac{\pi_k \cdot p(y_i | z_i = k)}{\sum_k \pi_k \cdot p(y_i | z_i = k)}
+$$
+
 **Maximization step (M-step):** Update the parameter vector 
 $$
 \Theta^{(h + 1)} = \arg\max_\theta \ Q(\Theta | \Theta^{(h)})
 $${#eq-mstep}
-
-Note that we can simplify the E-step with some manipulation. It can equivalently be written: 
-
-$$
-Q(\Theta, \Theta^{(h)}) = \nsum \sum_{k = 1}^K p_k \cdot \log p\bigpar{y_i \mid z_i = k} + \nsum \sum_{k = 1}^K p_k \cdot \log \pi_k
-$$
-
-Where $p_k$ is the posterior probability $p(z_i = k \mid y_i, \Theta)$ that component $k$ is responsible for infection of sample unit $i$, $\pi_k$ is the marginal probability $p(Z_i = k)$. Note that $\log p\bigpar{y_i \mid z_i = k}$ is the log-likelihood of our ZIB distribution defined earlier **assuming infection from component** $k$. Using the notation defined earlier, we can write
-
-$$
-P(y_i | z_i = k) = \mathrm{ZIB}\bigpar{y_i ; \alpha_t, \mu_{i,t}^{(k)}, \phi_t}
-$$
 
 To estimate $\mu_{i,t}^{(k)}$, we propose to assign each plant $i$ to one of $k \in K$ evenly-divided and non-overlapping potential source groups $G_k \subset i \in \bigbrace{1, 2, \ldots, n}$ (@fig-sourcegroup).
 
@@ -220,7 +226,6 @@ name == "8 x 8" ~ "K = 64")) |>
 plant_grid %>% 
   ggplot()+
   geom_sf(fill = "transparent")+
-  geom_sf(data = points_grid)+
   geom_sf_text(aes(label = grid_id), size = 2)+
   facet_wrap(~K, nrow = 1)+
   labs(x = "E", y = "N")+
@@ -232,33 +237,46 @@ ggsave("prior_grid.png", path = here("Reports/CAS_poster/"), width = 10, height 
 At each iteration, we will specifically update $\hat\mu_{i,t}^{(k)}$ as
 
 $$
-\hat\mu_{i,t}^{(k)} = \logit^{-1}\bigpar{\hat\eta_{i,t}^{(k)}} = \hat\beta_t^{(k)} + \hat\delta_t^{(k)}  y_{i,t-1}(1 - y_{i,t-1}) + \hat\gamma_t^{(k)}  \sum_{j \in G_k} \bigpar{y_{j,t-1} w_{ij} (d_{ij} + d_0)^{-\hat\kappa_t^{(k)}}}
+\hat\eta_{i,t}^{(k)} = \hat\beta_t^{(k)} + \hat\delta_t^{(k)}  y_{i,t-1}(1 - y_{i,t-1}) + \hat\gamma_t^{(k)}  \sum_{j \in G_k} \bigpar{y_{j,t-1} w_{ij} (d_{ij} + d_0)^{-\hat\kappa_t^{(k)}}}, \quad \mu_{i,t}^{(k)} = \mathrm{logit}^{-1}\bigpar{\eta_{i,t}^{(k)}}
 $$ {#eq-meanmod2}
 
-where $\hat\cdot$ denotes the MLE estimates from the global model, with gradients updated to reflect $\hat p_i^{(k)}$ (@eq-newgrad - @eq-gradphi). Letting $y_{i,t}^* = \log\bigpar{\frac{y_{i,t}}{1 - y_{i,t}}}$ and $\mu_{i,t}^* = \psi(\mu_{i,t}^{(k)}\phi_t)-\psi((1-\mu_{i,t}^{(k)})\phi_t)$, we have for the non-zero part of $\mathbf{y}_t$ that
+where we will initialize $\hat\cdot$ using the MLE estimates from the global model for all $k$, with gradients updated to reflect $\hat p_i^{(k)}$ (@eq-newgrad - @eq-gradphi). This approach leads to $K$ optimizations. For a single component $k$, let $y_{i,t}^* = \log\bigpar{\frac{y_{i,t}}{1 - y_{i,t}}}$ and $\mu_{i,t}^* = \psi(\mu_{i,t}^{(k)}\phi_t^{(k)})-\psi((1-\mu_{i,t}^{(k)})\phi_t^{(k)})$, we have for the non-zero part of $\mathbf{y}_t$ that
 
 $$
-\frac{\partial Q}{\partial \mu_{i,t}^{(k)}} \times \frac{\partial \mu_{i,t}^{(k)}}{\partial\eta_{i,t}} = \nsum \sum_{k=1}^K \hat p_i^{(k)} \cdot \phi_t(y_{i,t}^* - \mu_{i,t}^*) \cdot \mu_{i,t}^{(k)}(1 - \mu_{i,t}^{(k)})
+\frac{\partial Q}{\partial \mu_{i,t}^{(k)}} \times \frac{\partial \mu_{i,t}^{(k)}}{\partial\eta_{i,t}} = \nsum \hat p_i^{(k)} \cdot \phi_t^{(k)}(y_{i,t}^* - \mu_{i,t}^*) \cdot \mu_{i,t}^{(k)}(1 - \mu_{i,t}^{(k)})
 $$ {#eq-newgrad}
 
 Denoting the summand as $\text{grad}_{i,t}^{(k)}$, we can then write the updated gradients as
 
 $$
 \begin{split}
-\frac{\partial Q}{\partial\beta} &= \nsum \sum_{k=1}^K\text{grad}_{i,t}^{(k)} \\
-\frac{\partial Q}{\partial\delta} &= \nsum \sum_{k=1}^K\text{grad}_{i,t}^{(k)}\times y_{i,t-1}(1 - y_{i,t-1}) \\
-\frac{\partial Q}{\partial\gamma} &= \nsum \sum_{k=1}^K\text{grad}_{i,t}^{(k)} \times \sum_{j \in G_s}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}} \\
-\frac{\partial Q}{\partial\kappa} &= \nsum \sum_{k=1}^K\text{grad}_{i,t}^{(k)} \times -\gamma \sum_{j \in G_s}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}\log(d_{ij} + d_0)}
+\frac{\partial Q}{\partial\beta^{(k)}} &= \nsum \text{grad}_{i,t}^{(k)} \\
+\frac{\partial Q}{\partial\delta^{(k)}} &= \nsum \text{grad}_{i,t}^{(k)}\times y_{i,t-1}(1 - y_{i,t-1}) \\
+\frac{\partial Q}{\partial\gamma^{(k)}} &= \nsum \text{grad}_{i,t}^{(k)} \times \sum_{j \in G_k}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa}} \\
+\frac{\partial Q}{\partial\kappa^{(k)}} &= \nsum \text{grad}_{i,t}^{(k)} \times -\gamma^{(k)} \sum_{j \in G_k}\bigpar{y_{j,t-1}w_{ij} (d_{ij} + d_0)^{-\kappa^{(k)}}\log(d_{ij} + d_0)}
 \end{split}
 $$ {#eq-newgrads}
 
 and we can directly derive the new gradient for $\phi_t$ as
 
 $$
-\frac{\partial Q}{\partial \phi_t} = \nsum \sum_{k = 1}^K \hat p_i^{(k)} \bigbrak{\psi(\phi_t) - \mu_{i,t}^{(k)} \psi(\mu_{i,t}^{(k)} \phi_t) - (1 - \mu_{i,t}^{(k)}) \psi(\phi_t(1 - \mu_{i,t}^{(k)})) + \mu_{i,t}^{(k)} \log y_{i,t} + \\ (1 - \mu_{i,t}^{(k)}) \log (1 - y_{i,t})}
+\frac{\partial Q}{\partial \phi_t^{(k)}} = \nsum \hat p_i^{(k)} \bigbrak{\psi(\phi_t^{(k)}) - \mu_{i,t}^{(k)} \psi(\mu_{i,t}^{(k)} \phi_t^{(k)}) - (1 - \mu_{i,t}^{(k)}) \psi(\phi_t^{(k)}(1 - \mu_{i,t}^{(k)})) + \mu_{i,t}^{(k)} \log y_{i,t} + \\ (1 - \mu_{i,t}^{(k)}) \log (1 - y_{i,t})}
 $$ {#eq-gradphi}
 
-Initial estimates for $\boldsymbol\theta$ will be the estimated MLEs from the forward model. \newpage
+We can finally explicitly update the marginal parameter $\boldsymbol{\pi}$ as 
+
+$$
+\pi_k = \frac{\nsum p_{ik}}{n}
+$$
+
+We will iterate this process for $l$ iterations or until 
+
+$$
+\abs{Q^{(h + 1)} - Q^{(h)}} < \epsilon
+$$
+
+For some prespecified $\epsilon > 0$.
+\newpage
 
 # References
 

@@ -22,35 +22,44 @@ source(here("Code/03a_BackwardGradFun.R"))
 source(here("Code/02a_ForwardGradFun.R"))
 
 # Backward Fit ------------------------------------------------------------
-backward_fit <- function(intensity, intensity_prev, wind, dist, group_id, theta_init) {
-
+backward_fit <- function(blk, trt, vst, config, mod_dat, forward_fits) {
+  browser()
+  ## Extract needed data
+  intensity <- mod_dat$intensity[,blk,trt,vst]
+  intensity_prev <- mod_dat$intensity[,blk,trt,as.numeric(vst)-1]
+  wind <- mod_dat$wind[,,blk,trt,vst]
+  dist <- mod_dat$dist
+  group_id <- mod_dat$groups[, config]
+  
   # Initializations
   K <- length(unique(group_id)) #Number of mixture components
   prior <- rep(1/K, K) #Uniform prior
-  theta_mat <- 
-  # Initial E-step
+  theta_init <- forward_fits[block == blk & treat == trt & visit == vst][["theta"]][[1]]
+  theta_mat <- matrix(theta_init, nrow = length(theta_init), ncol = K) #Create matrix of parameters for each component
+  rownames(theta_mat) <- names(theta_init)
   
-  ## Create a matrix of values for theta (n_pars x n_groups)
-  theta_mat <- matrix(theta, nrow = length(theta), ncol = n_groups)
-  rownames(theta_mat) <- names(theta)
+  #Initialize dispersal and mu_mat 
+  dispersal <- kappa_inner_sum_backward(par_mat = theta_mat, y_prev = intensity_prev, wind_mat = wind, dist_mat = dist, group_id = group_id)
+  mu_list <- lapply(seq_len(K), function(k) {
+    get_mu(
+      par       = theta_mat[, k],          # parameters for component k
+      y_prev    = intensity_prev,          # previous intensities (length n)
+      dispersal = dispersal[, k]           # dispersal column for component k
+    )
+  })
+
+  # Combine results into an n × K matrix
+  mu_mat <- do.call(cbind, mu_list)
 
   ## Set up convergence criteria and algorithm tracking
   max_em_iter <- 1000
   tol <- 1e-6
   q_track <- numeric(max_em_iter)
   
-  # E-step
-
-  
-  
   # EM loop
-  for (em_iter in seq_len(max_em_iter)) {
-    # Subset the current values of theta
-    theta_k <- theta_mat[,k]
-
+  for (em_iter in 1:max_em_iter) {
     #E-step
-    ## Compute mu_matrix
-    mu_mat <- get_mu(par = theta, y_prev = intensity_prev, wind_matrix = wind, dist_matrix = dist, group_id = groups)
+    p_mat <- e_step(y = intensity, mu_mat = mu_mat, phi = )
 
     ## Compute conditional probability matrix
     p_mat <- e_step(y_vec = intensity, mu_mat = mu_mat, phi = theta[["phi"]], prior_vec = prior)

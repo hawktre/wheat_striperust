@@ -16,34 +16,37 @@ logit <- function(p) log(p / (1 - p))
 inv_logit <- function(x) 1 / (1 + exp(-x))
 
 # Dispersal function ------------------------------------------------------
-kappa_inner_sum_backward <- function(par, y_prev, wind_mat, dist_mat, d0 = 0.01, derivative = FALSE, group_id) {
+kappa_inner_sum_backward <- function(par_mat, y_prev, wind_mat, dist_mat, d0 = 0.01, derivative = FALSE, group_id) {
+  
+  n <- length(y_prev)
+  K <- length(unique(group_id))
 
-n <- length(y_prev)
-groups <- sort(unique(group_id))
-K <- length(groups)
+  # Compute constant terms
+  dist_shifted <- dist_mat + d0
+  log_dist <- log(dist_shifted)
+  kappa <- par_mat['kappa',]
 
-# Compute shifted distance matrix and dispersal kernel
-dist_shifted <- dist_mat + d0
-log_dist <- log(dist_shifted)
-kernel_mat <- dist_shifted^(-par[['kappa']])
+  #Initialize matrix for storage
+  dispersal_mat <- matrix(0, nrow = n, ncol = K)
 
-# Element-wise dispersal term
-y_mat <- matrix(y_prev, nrow = n, ncol = n, byrow = TRUE)
-spread_mat <- y_mat * wind_mat * kernel_mat
+  #Assume infection came from group k
+  for (k in 1:K){
+    group_k <- which(group_id == k)
+    y_prev_k <- y_prev[group_k]
+    kappa_k <- kappa[k]
 
-if (derivative) {
-  spread_mat <- spread_mat * log_dist
-}
+    #Compute distance kernel
+    dist_kernel_k <- dist_shifted^(-kappa_k)
+    if(derivative){
+      dist_kernel_k <- -dist_kernel_k * log_dist
+    }
 
-diag(spread_matrix) <- 0  # remove self-contribution
+    #Compute spread matrix
+    wind_dist <- wind_mat * dist_kernel_k
+    spread_k <- wind_dist[,group_k, drop = F] %*% y_prev_k
 
-# Initialize result matrix: one column per group s
-dispersal_mat <- matrix(0, nrow = n, ncol = K)
-
-for (k in seq_along(groups)) {
-  group_mask_vec <- as.numeric(group_id == groups[k])  # length-n vector
-  dispersal_mat[, k] <- spread_matrix %*% group_mask_vec  # matrix-vector product
-}
+    dispersal_mat[, k] <- spread_k
+  }
 
 return(dispersal_mat)  # n x K matrix of dispersal from each group
 }
@@ -53,8 +56,9 @@ get_mu <- function(par, y_prev, dispersal) {
 
 #Compute Autoinfection
 auto <- y_prev * (1 - y_prev)
+  
 #Compute linear predictor
-eta <- par[['beta']] + par[['delta']] * auto + gamma * dispersal
+eta <- par[['beta']] + par[['delta']] * auto + par[['gamma']] * dispersal
 
 #invers-logit
 mu  <- inv_logit(eta)
@@ -98,9 +102,9 @@ loglik_zibeta <- function(y, mu, phi, sum = TRUE, log = TRUE) {
 }
 
 # Function to compute Q (expected log-likelihood)
-Q_fun <- function(y_vec, mu_mat, phi, p_mat, pi_vec) {
+Q_fun <- function(y, mu_mat, phi, p_mat, pi_vec) {
   #Compute weighted likelihood matrix
-  lik_mat <- apply(mu_mat, 2, function(x) loglik_zibeta(y_vec, x, phi, sum = F, log = T))
+  lik_mat <- apply(mu_mat, 2, function(x) loglik_zibeta(y, x, phi, sum = F, log = T))
 
   #compute Q-val
   Q_val <- sum(p_mat * lik_mat) + sum(p_mat * pi_vec)
@@ -109,10 +113,10 @@ Q_fun <- function(y_vec, mu_mat, phi, p_mat, pi_vec) {
 }
 
 # E-step ------------------------------------------------------------------
-e_step <- function(y, mu_mat, phi, prior_vec){
+e_step <- function(y, mu_mat, phi, prior){
   
   # Initialize weighted likelihood matrix
-  wl_mat <- prior_vec * apply(mu_mat, 2, function(x) loglik_zibeta(y, x, phi, sum = F, log = F))
+  wl_mat <- prior * apply(mu_mat, 2, function(x) loglik_zibeta(y, x, phi, sum = F, log = F))
   
   #Compute posterior probabilities
   p_mat <- wl_mat / rowSums(wl_mat)
@@ -127,7 +131,8 @@ m_step_grad <- function(par, y_current, y_prev, dispersal, dispersal_grad, p_vec
   delta <- par["delta"]
   gamma <- par["gamma"]
   kappa <- par["kappa"]
-  phi   <- par["phi"]
+  log_phi   <- par["phi"]
+  phi <- exp(log_phi)
 
   non_zero <- which(y_current > 0)
 
@@ -155,11 +160,7 @@ m_step_grad <- function(par, y_current, y_prev, dispersal, dispersal_grad, p_vec
   
   
   # phi derivative (as scalar sum over i and k)
-  d_phi <- sum(p_vec * (digamma(phi)) - 
-    mu_vec*(digamma(mu_vec*phi)) - 
-    (1 - mu_vec)*digamma((1- mu_vec)*phi) + 
-    mu_vec*log(y_current) + 
-    (1 - mu_vec)*log(1 - y_current))
+  d_phi <- sum(p_vec * ((digamma(phi)) - mu*(digamma(mu*phi)) - (1 - mu)*digamma((1- mu)*phi) + mu*log(y_current) + (1 - mu)*log(1 - y_current) * phi))
   
   -c(beta = d_beta, delta = d_delta, gamma = d_gamma, kappa = d_kappa, phi = d_phi)
 }
