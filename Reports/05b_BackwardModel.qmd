@@ -76,25 +76,22 @@ Survey data, along with inoculum locations were provided by Chris Mundt. Additio
 
 ## Backward Model
 
-As in @ojwang2021, let us consider a latent variable $Z_i$ indicating the source of infection for plant $i$:
+As in @ojwang2021, Let us introduce a latent process $Z$ which indicates the causal attribution of disease to one of $k \in \bigpar{1, \ldots, K}$ sources with a certain probability:
 
 $$
-Z_i \sim \text{Multinomial}(1, \boldsymbol{p}_i)
-$$
+Z_i \sim \mathrm{Multinomial}\bigpar{1, \boldsymbol{\pi}}
+$$ 
 
-Where
+Under this framework $P(Z_i = k) = \pi_k$ indicates that an infection event is caused by source $k$ with probability $\pi_k$.  We are interested in estimating the conditional posterior $p_k = p(z_i = k \mid \mathbf{X}, \Theta)$---the probability that source location $i$ was infected by source $k$, given our observed data (also called the 'complete' data). One way to accomplish such a goal is to leverage the Expectation-Maximization (EM) algorithm. 
 
--   $\boldsymbol{p}_i = \left(p_{i1}, \ldots, p_{iS}\right)$
--   $p_{is} = P(Z_i = s)$
--   $\sum_{s=1}^Sp_{is} = 1$
+Define the complete data as $\mathcal{X} = \bigbrace{\mathcal{Y}, \boldsymbol{Z}}$, where $\mathcal{Y} = \bigbrace{\mathbf{y}_t, \mathbf{y}_{t-1}, \mathbf{w}_t, \mathbf{d}}$ Our goal here is to find the maximum likelihood estimate of the marginal likelihood of our *observed* data $\mathrm{ZIB}(y_{i,t}; \alpha_t, \mu_{i,t}, \phi_t)$ by iteratively applying two steps: 
 
-Define the complete data as $\mathcal{X} = \left(\mathcal{Y}, \boldsymbol{Z}\right)$, where $\mathcal{Y} = \left(y_{i,t}, y_{j,t-1}, w_{ij}, d_{ij}\right)$ for all $j \neq i$. The complete-data log-likelihood is then given by:
 
 $$
-\ell(\boldsymbol{\theta} \mid \mathcal{X}) = \sum_{i=1}^n \sum_{s=1}^S \mathbb{1} \{Z_i = s\} \cdot \log f(y_{i,t} \mid \mu_{i,t}^{(s)}, \phi_t)
+\ell(\boldsymbol{\theta} \mid \mathcal{X}) = \sum_{i=1}^n \sum_{k=1}^K \mathbb{1} \{Z_i = k\} \cdot \log f(y_{i,t} \mid \mu_{i,t}^{(k)}, \phi_t)
 $$ {#eq-loglik}
 
-where $\mu_{i,t}^{(s)}$ denotes the predicted mean intensity at $i$ assuming infection from source group $s$. We can then apply the Expectation-Maximization (EM) algorithm to estimate the posterior source probabilities $\hat p^{(s)}$. At each iteration:
+where $\mu_{i,t}^{(k)}$ denotes the predicted mean intensity at $i$ assuming infection from source group $s$. We can then apply the Expectation-Maximization (EM) algorithm to estimate the posterior source probabilities $\hat p^{(s)}$. At each iteration:
 
 $\textbf{E-step:}$ Use Bayes' rule to update 
 

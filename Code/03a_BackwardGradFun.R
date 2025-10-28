@@ -16,55 +16,55 @@ logit <- function(p) log(p / (1 - p))
 inv_logit <- function(x) 1 / (1 + exp(-x))
 
 # Dispersal function ------------------------------------------------------
-kappa_inner_sum_backward <- function(par_mat, y_prev, wind_mat, dist_mat, d0 = 0.01, derivative = FALSE, group_id) {
-  
-  n <- length(y_prev)
-  K <- length(unique(group_id))
+kappa_inner_sum_backward <- function(par, y_prev, wind_mat, dist_mat, d0 = 0.01, derivative = FALSE, group_id, component) {
 
   # Compute constant terms
   dist_shifted <- dist_mat + d0
   log_dist <- log(dist_shifted)
-  kappa <- par_mat['kappa',]
-
-  #Initialize matrix for storage
-  dispersal_mat <- matrix(0, nrow = n, ncol = K)
+  kappa <- par[['kappa']]
 
   #Assume infection came from group k
-  for (k in 1:K){
-    group_k <- which(group_id == k)
-    y_prev_k <- y_prev[group_k]
-    kappa_k <- kappa[k]
+  group_k <- which(group_id == component)
+  y_prev_k <- y_prev[group_k]
 
-    #Compute distance kernel
-    dist_kernel_k <- dist_shifted^(-kappa_k)
-    if(derivative){
-      dist_kernel_k <- -dist_kernel_k * log_dist
-    }
-
-    #Compute spread matrix
-    wind_dist <- wind_mat * dist_kernel_k
-    spread_k <- wind_dist[,group_k, drop = F] %*% y_prev_k
-
-    dispersal_mat[, k] <- spread_k
+  #Compute distance kernel
+  dist_kernel_k <- dist_shifted^(-kappa)
+  if(derivative){
+    dist_kernel_k <- -dist_kernel_k * log_dist
   }
 
-return(dispersal_mat)  # n x K matrix of dispersal from each group
+  #Compute spread matrix
+  wind_dist <- wind_mat * dist_kernel_k
+  dispersal_k <- wind_dist[,group_k, drop = F] %*% y_prev_k
+
+  return(dispersal_k)  # n x K matrix of dispersal from each group
 }
 
 # Mean function -----------------------------------------------------------
-get_mu <- function(par, y_prev, dispersal) {
+get_mu <- function(par, y_prev, wind_mat, dist_mat, group_id, component, d0 = 0.01) {
+  # recompute dispersal at current kappa
+  dispersal <- kappa_inner_sum_backward(
+    par = par,
+    y_prev = y_prev,
+    wind_mat = wind_mat,
+    dist_mat = dist_mat,
+    d0 = d0,
+    derivative = FALSE,
+    group_id = group_id,
+    component = component
+  )
 
-#Compute Autoinfection
-auto <- y_prev * (1 - y_prev)
-  
-#Compute linear predictor
-eta <- par[['beta']] + par[['delta']] * auto + par[['gamma']] * dispersal
+  # autoinfection term
+  auto <- y_prev * (1 - y_prev)
 
-#invers-logit
-mu  <- inv_logit(eta)
+  # linear predictor
+  eta <- par["beta"] + par["delta"] * auto + par["gamma"] * dispersal
 
-return(pmin(pmax(mu, 1e-6), 1 - 1e-6))
+  # inverse logit, clipped for numerical stability
+  mu <- 1 / (1 + exp(-eta))
+  pmin(pmax(mu, 1e-6), 1 - 1e-6)
 }
+
 
 # Compute Likelihood ---------------------------------------------------------
 loglik_zibeta <- function(y, mu, phi, sum = TRUE, log = TRUE) {
@@ -103,64 +103,141 @@ loglik_zibeta <- function(y, mu, phi, sum = TRUE, log = TRUE) {
 
 # Function to compute Q (expected log-likelihood)
 Q_fun <- function(y, mu_mat, phi, p_mat, pi_vec) {
-  #Compute weighted likelihood matrix
-  lik_mat <- apply(mu_mat, 2, function(x) loglik_zibeta(y, x, phi, sum = F, log = T))
+  K <- ncol(mu_mat)
+  phi <- exp(phi)
+  
+  lik_list <-   lapply(seq_len(K), function(k) {
+      loglik_zibeta(y, mu = mu_mat[, k], phi = phi[k], sum = F, log = T)
+    })
+  
+  lik_mat <- do.call(cbind, lik_list)
+
+  inner_sum <- t(t(lik_mat) + log(pi_vec))
 
   #compute Q-val
-  Q_val <- sum(p_mat * lik_mat) + sum(p_mat * pi_vec)
+  Q_val <- sum(p_mat * inner_sum)
 
   return(-Q_val)
 }
 
+
+
 # E-step ------------------------------------------------------------------
 e_step <- function(y, mu_mat, phi, prior){
+  phi <- exp(phi)
+  K <- ncol(mu_mat)
+
+  lik_list <-   lapply(seq_len(K), function(k) {
+      loglik_zibeta(y, mu = mu_mat[, k], phi = phi[k], sum = F, log = F)
+    })
   
-  # Initialize weighted likelihood matrix
-  wl_mat <- prior * apply(mu_mat, 2, function(x) loglik_zibeta(y, x, phi, sum = F, log = F))
-  
-  #Compute posterior probabilities
+  lik_mat <- do.call(cbind, lik_list)
+
+  # Multiply each row (observation) element-wise by prior[k]
+  wl_mat <- t(t(lik_mat) * prior)
+
+  # Posterior probabilities for each observation and component
   p_mat <- wl_mat / rowSums(wl_mat)
   
   return(p_mat)
 }
 
+# Function to compute Q for M-step optimization
+m_step_obj <- function(par, y_current, y_prev, wind_mat, dist_mat, group_id, component, p_vec) {
+  # extract phi (still on log scale)
+  phi <- exp(par[["phi"]])
+
+  # recompute mu at current parameters
+  mu_vec <- get_mu(
+    par       = par,
+    y_prev    = y_prev,
+    wind_mat  = wind_mat,
+    dist_mat  = dist_mat,
+    group_id  = group_id,
+    component = component
+  )
+
+  # compute log-likelihood for each observation
+  ll_vec <- loglik_zibeta(y_current, mu_vec, phi, sum = FALSE, log = TRUE)
+
+  # expected complete-data log-likelihood (Q_k)
+  Q_k <- sum(p_vec * ll_vec)
+
+  return(-Q_k)
+}
+
 
 # M-step ------------------------------------------------------------------
-m_step_grad <- function(par, y_current, y_prev, dispersal, dispersal_grad, p_vec, mu_vec) {
+m_step_grad <- function(par, y_current, y_prev, wind_mat, dist_mat, group_id, component, p_vec) {
   beta  <- par["beta"]
   delta <- par["delta"]
   gamma <- par["gamma"]
   kappa <- par["kappa"]
-  log_phi   <- par["phi"]
+  log_phi <- par["phi"]
   phi <- exp(log_phi)
 
   non_zero <- which(y_current > 0)
 
-  # Create model matrix
-  auto_vec <- y_prev * (1 - y_prev)
+  # Recompute dispersal and its derivative (with respect to kappa)
+  dispersal <- kappa_inner_sum_backward(
+    par = par, 
+    y_prev = y_prev,
+    wind_mat = wind_mat, 
+    dist_mat = dist_mat,
+     derivative = FALSE,
+    group_id = group_id, 
+    component = component
+  )
 
-  #Subset the non-zero part
+  dispersal_grad <- kappa_inner_sum_backward(
+    par = par, 
+    y_prev = y_prev,
+    wind_mat = wind_mat, 
+    dist_mat = dist_mat,
+     derivative = T,
+    group_id = group_id, 
+    component = component
+  )
+
+  # Recompute mu
+  mu_vec <- get_mu(
+    par = par,
+    y_prev = y_prev,
+    wind_mat = wind_mat,
+    dist_mat = dist_mat,
+    group_id = group_id,
+    component = component
+  )
+
+  # Subset to nonzero responses
   y_current <- y_current[non_zero]
-  auto_vec <- auto_vec[non_zero]
+  auto_vec <- y_prev[non_zero] * (1 - y_prev[non_zero])
   dispersal <- dispersal[non_zero]
   dispersal_grad <- dispersal_grad[non_zero]
   p_vec <- p_vec[non_zero]
   mu_vec <- mu_vec[non_zero]
-  
-  # Compute derivatives
+
+  # Core derivatives
   y_star <- logit(y_current)
   mu_star <- digamma(mu_vec * phi) - digamma((1 - mu_vec) * phi)
   weight <- phi * (y_star - mu_star) * mu_vec * (1 - mu_vec)
-  
-  # Weight everything by p_mat
+
+  # Gradients
   d_beta  <- sum(p_vec * weight)
   d_delta <- sum(p_vec * weight * auto_vec)
   d_gamma <- sum(p_vec * weight * dispersal)
   d_kappa <- sum(p_vec * weight * (-gamma) * dispersal_grad)
-  
-  
-  # phi derivative (as scalar sum over i and k)
-  d_phi <- sum(p_vec * ((digamma(phi)) - mu*(digamma(mu*phi)) - (1 - mu)*digamma((1- mu)*phi) + mu*log(y_current) + (1 - mu)*log(1 - y_current) * phi))
-  
+
+  # φ gradient (log-scale)
+  d_phi_raw <- sum(p_vec * (
+    digamma(phi) -
+      mu_vec * digamma(mu_vec * phi) -
+      (1 - mu_vec) * digamma((1 - mu_vec) * phi) +
+      mu_vec * log(y_current) +
+      (1 - mu_vec) * log(1 - y_current)
+  ))
+  d_phi <- phi * d_phi_raw  # chain rule for log(φ)
+
   -c(beta = d_beta, delta = d_delta, gamma = d_gamma, kappa = d_kappa, phi = d_phi)
 }
+

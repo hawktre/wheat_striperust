@@ -27,6 +27,8 @@ options(scipen = 6, digits = 4)
 ## load up the packages we will need:  (uncomment as required)
 
 library(tidyverse)
+library(furrr)
+library(future)
 library(here)
 library(data.table)
 
@@ -46,8 +48,12 @@ configs <- dimnames(mod_dat$groups)[["config"]]
 # Fit the model -----------------------------------------------------------
 # 2. Fit backward model
 combos_backward <- expand.grid(config = configs, blk = blocks, trt = treats, vst = visits[-1], stringsAsFactors = FALSE)
-backward_fit(config = "64", blk = "A", trt = "1", vst = "2", mod_dat = mod_dat, forward_fits = forward)
-backward <- pmap(combos_backward, ~backward_fit(..1, ..2, ..3, ..4, mod_dat = mod_dat, forward)) %>% rbindlist()
+
+start <- Sys.time()
+backward <- pmap(combos_backward, ~backward_fit(..1, ..2, ..3, ..4, mod_dat = mod_dat, forward), .progress = T) %>% rbindlist()
+end <- Sys.time()
+runtime <- difftime(end, start, units = "mins")  # could be "mins", "hours", etc.
+message("Runtime = ", round(runtime, 2), " minutes")
 
 # 4. Source prediction for treat == 1
 backward_t1 <- backward[treat == 1]
@@ -55,13 +61,18 @@ sources_predicted <- pmap(backward_t1, ~source_pred(config = ..1,
                                                     blk = ..2,
                                                     trt = ..3,
                                                     vst = ..4,
-                                                    p_mat = ..9,
+                                                    p_mat = ..10,
                                                     mod_dat = mod_dat)) %>% 
   rbindlist()
 
-results_merge <- left_join(backward, forward, by = c("block", "treat", "visit"), suffix = c(".backward", ".forward")) %>% 
-  dplyr::select(-c(final_theta, p_mat)) %>% 
-  left_join(sources_predicted, by = c("config", "block", "treat", "visit")) 
+results_merge <- left_join(backward |> mutate(treat = as.factor(treat), 
+visit = as.factor(visit)), forward |> mutate(treat = as.factor(treat), 
+visit = as.factor(visit)), by = c("block", "treat", "visit"), suffix = c(".backward", ".forward")) %>% 
+  left_join(sources_predicted |> mutate(treat = as.factor(treat), 
+visit = as.factor(visit)), by = c("config", "block", "treat", "visit")) 
 
 saveRDS(results_merge, here("DataProcessed/results/backward_model/backward_fits.rds"))
 
+sources_predicted |> 
+  group_by(config, visit) |> 
+  summarise(mean_acc = mean(dist_acc))
