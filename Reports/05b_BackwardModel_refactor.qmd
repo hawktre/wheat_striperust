@@ -99,4 +99,131 @@ Q(\Theta; \Theta^{(h)}) &= \mathbb{E}_z\left[\sum_i\log f(y_{i}, z_{i} \mid \The
 \end{split}
 $$
 
-where $p_{ik} = p(z_{i} = k \mid y_i, \Theta^{(h)})$, the posterior probability that sample location $i$ was infected by source $k$ given the observed data. Notice also, that we must characterize $f(y_{i} \mid z_{i} = k)$. 
+where $p_{ik} = p(z_{i} = k \mid y_i, \Theta^{(h)})$, the posterior probability that sample location $i$ was infected by source $k$ given the observed data. Notice also, that we must characterize $f(y_{i} \mid z_{i} = k)$. Here, we propose that 
+
+$$
+y_i \mid z_i \overset{ind}{\sim} ZIB(\alpha, \mu_i^{(k)}, \phi^{(k)})
+$$
+
+Clearly, we need to adapt our forward model for the source-specific $\mu_i^{(k)}, \phi^{(k)}$. Specific to the setup of the present experiment, let us propose $k = 1, \ldots, K$ non-overlapping spatial arrangements of potential source groups (@fig-sourcegroup), denoted $G_k = \{i: x_i, y_i \in k\}$. 
+
+```{r}
+#| echo: FALSE
+#| label: fig-sourcegroup
+#| fig-align: center
+#| fig-cap: "Schematics for each of the four grouping strategies considered in this study; corresponding to 16, 8, 4, and 1 plant(s) per source group from left to right."
+#| fig-width: 8
+#| fig-height: 3
+
+library(here)
+library(tidyverse)
+library(sf)
+
+
+spat_groups <- readRDS(here("DataProcessed/experimental/grids_sp.rds"))
+
+grids <- rbind(
+  spat_groups$`4`$grid,
+  spat_groups$`8h`$grid,
+  spat_groups$`8v`$grid,
+  spat_groups$`16`$grid,
+  spat_groups$`64`$grid
+) %>% 
+  mutate(k_label = factor(case_when(name == "2 x 2" ~ "k = 16",
+                             name == "4 x 2" ~ "k = 8 (Horizontal)",
+                             name == "2 x 4" ~ "k = 8 (Vertical)",
+                             name == "4 x 4" ~ "k = 4",
+                             name == "8 x 8" ~ "k = 64"), 
+                          levels = c("k = 4", 
+                                     "k = 8 (Horizontal)", 
+                                     "k = 8 (Vertical)",
+                                     "k = 16",
+                                     "k = 64"))) 
+
+points <- rbind(
+  spat_groups$`4`$points,
+  spat_groups$`8h`$points,
+  spat_groups$`8v`$points,
+  spat_groups$`16`$points,
+  spat_groups$`64`$points
+)
+
+ggplot()+
+  geom_sf(data = grids, fill = "transparent")+
+  geom_sf(data = points)+
+  facet_wrap(~k_label, nrow = 1)+
+  theme_classic()+
+  labs(x = "East (m)", y = "North (m)")
+
+```
+
+We then adapt the model of disease spread as 
+
+$$
+\frac{\mu_i^{(k)}}{1- \mu_i^{(k)}} = \beta^{(k)} + \delta^{(k)}  y_{i,t-1}(1 - y_{i,t-1}) + \gamma^{(k)}  \sum_{(j \neq i) \in G_k} \left(y_{j,t-1} w_{ij} (d_{ij} + d_0)^{-\kappa^{(k)}}\right)
+$${#eq-meanmod}
+
+and estimate $\phi^{(k)}$ concurrently via gradient descent. Next, we explicitly state the relevant steps for the EM alrogithm. 
+
+## EM Algorithm Implementation
+### Parameter Initializations
+
+We initialized $\boldsymbol\tau = \left(\beta, \delta, \gamma, \kappa \right)$ using the MLE estimates from the forward model. We similarly conducted a sensitivity analysis using the initialization scheme proposed in `00a_model_considerations`. We initialized $\pi_k = \frac{1}{k}$ as the uniform prior. 
+
+### E-Step 
+
+Use Bayes' rule to update 
+
+$$
+p_{ik}^{(h + 1)} = \frac{f(y_i \mid z_i, \mu_i^{(k)}, \phi^{(k)}) \cdot \pi_k}{\sum_kf(y_i \mid z_i, \mu_i^{(k)}, \phi^{(k)}) \cdot \pi_k}
+$${#eq-estep}
+
+and the result to compute 
+
+$$
+Q(\Theta)^{(h + 1)} = \sum_i\sum_k p_{ik}\log \left(f(y_{i} \mid z_{i} = k) \cdot \pi_k\right)
+$$
+
+### M-step
+For each component $k \in 1, \ldots, K$, update the parameter vector 
+
+$$
+\Theta^{(h + 1)} = \arg\max_\theta \ Q(\Theta | \Theta^{(h)})
+$${#eq-mstep}
+
+This can be accomplished using a variety of techniques for numerical approximation. For the present study, we utilized quasi-Newtonian Gradient Descent as implemented in `optim(method = 'BGFS')` in `r version$version.string`. Gradient derivations and details are available in `05a_SourceDetection_ModelConsiderations`. The MLE for $\boldsymbol\pi$ can be computed directly as
+
+$$
+\pi_k^{(h +1)} = \frac{\sum_{i = 1}^n p_{ik}^{(h)}}{n}
+$$
+
+### Convergence
+We repeat the E- and M-step(s) until some convergence criteria is met. For the present study, we monitor both the Q-function and the posterior probabilities for sufficiently small changes. Appropriate convergence criteria are problem-specific in general. 
+
+## Prediction
+
+The goal of this study is to correctly determine which component $k$ contains the true source. What we have from the converged algorithm is an $n \times K$ matrix $\mathbf{p}$ whose individual entries denote the probability that sample location $i$ was infected by component $k$. To achieve a single prediction, we start with a soft-aggregation
+
+$$
+S_{kk} = \frac{1}{||G_k||}\sum_{i \in G_k}p_{ik}
+$$
+Thus, $\mathbf{S}$ will be a $K \times K$ matrix where the diagonal entries are the probability of self-infection for component and the off-diagonal entries are the probability of cross-infection. A single prediction can then be obtained by taking 
+
+$$
+\hat k = \arg\max_{k_1,k_2} \mathbf{S}
+$$
+
+### Prediction Error
+
+From our prediction, we can compute a standard suite of multi-class prediction metrics. Traditional mutliclass metrics are produced from confusion matrices, where a *correct* prediction only occurs when the predicted class label matches the true class label. In this case, this approach may not produce a realistic, interpretable metric. To counter that, we propose a distance-weighted accuracy. Let $d_{\text{pred}}$ denote the distance from the centroid of the predicted source to the centroid of the true source and $d_{\text{max}}$ be the distance of the furthest centroid from the true source. Define the score for an individual prediction as
+
+$$
+e = 1 - \frac{d_{\text{pred}}}{d_{\text{max}}}
+$$
+Using this formula we have in general that $0 \leq e \leq 1$, so that we can interpret the metric similarly to standard accuracy. 
+
+# Results
+
+# References
+::: {#refs}
+:::
