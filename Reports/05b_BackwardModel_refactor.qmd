@@ -1,0 +1,102 @@
+---
+title: "Spread of Wheat Stripe Rust in an Experimental Framework"
+subtitle: "Preliminary Results: A Model for Source Detection Using EM-algorithm"
+author:   
+  - name: Trent VanHawkins
+    affiliations:
+      - ref: osu
+    degrees: MS
+    corresponding: true
+  - name: Christopher Mundt
+    affiliations:
+      - ref: osu
+    degrees: PhD
+  - name: David Gent
+    affiliations:
+      - ref: usda
+      - ref: osu
+    degrees: PhD
+  - name: Shirshendu Chatterjee
+    affiliations:
+      - ref: nyu
+    degrees: PhD
+  - name: Sharmodeep Bhattacharyya
+    affiliations:
+      - ref: osu
+    degrees: PhD
+affiliations:
+  - id: osu
+    name: Oregon State University
+  - id: usda
+    name: U.S. Department of Agriculture
+  - id: nyu
+    name: City University of New York
+format: 
+  html:
+    lightbox: auto
+embed-resources: true
+toc: true
+code-fold: true
+execute: 
+  warning: false
+code-links:
+  - text: GitHub Repository
+    href: https://github.com/hawktre/wheat_striperust
+page-layout: full
+references: references.bib
+bibliography: references.bib
+---
+
+# Introduction
+
+Previous reports for this project have documented the development and implementation of a model for the spread of Stripe Rust (*Puccinia striiformis*) among Wheat plants, using infection data collected from an experimental study conducted between April and July of 2024 at the Hyslop Crop Science Field Laboratory in Benton County, Oregon. The reports in the table below will recall the work that has been accomplished up to this point in chronological order.
+
+| Report Name | Description |
+|----------------------------|--------------------------------------------|
+| 00_EDA | Exploratory Data Analysis |
+| 00a_ModelingConsiderations | Modeling framework and derivations for non-linear Beta regression, accounting for zero-inflation |
+| 04_ModelResults_Hurdle_logistic | Preliminary modeling results for the spread of the disease |
+| 05a_SourceDetection_ModelConsiderations | Modeling framework and derivations for a source-detection model built upon the forward model. |
+
+The remaining reports found in the 'reports' folder document incremental steps in the modeling procedure that culminate in the work produced in `04_ModelREsults_Hurld_logistic`.
+
+In the previous report, 05a_SourceDetection_ModelConsiderations, we introduced a framework for source detection (also referred to as a 'backwards model') by leveraging the optimized model parameters from the 'forward' model in an Expectation-Maximization (EM) optimization scheme. Here, we present the initial results for this method using the present dataset.
+
+# Methods
+
+We have extensively documented exploratory analyses and model derivations in previous reports. Here, we briefly highlight those aspects of experimental design and model development which are essential to interpreting source-detection results.
+
+## Experimental Design
+
+This experiment was conducted between the months of April and July of 2024 at the Hyslop Crop Science Field Laboratory in Benton County, Oregon. Wheat was planted in one of four blocks (labeled A-D), each containing three replicates (plots). Within each block, each $30.5 \times 30.5$ m plot was inoculated with spores from *Puccinia stiiformis* at one, two, or four locations of equal size ($0.76 \times 0.76$ m) between April 9th and April 25th, 2024. After approximately one month, plots were surveyed weekly for **five** consecutive weeks beginning May 17th, 2024. At each survey, domain experts visually estimated disease prevalence in $1.52 \times 1.52$ m grids, expressed as a percentage (0-100) of infected plant tissue within the sampling grid. Individual sampling locations are distinguished by their distance from the plot origin in meters. Further details of the experimental design may be found on pages 6 & 7 of the EEID Project Grant.
+
+## Data Acquisition, Cleaning, and Exploration
+
+Survey data, along with inoculum locations were provided by Chris Mundt. Additional data capturing wind speed (mph) and direction (degrees azimuth) were acquired from a local weather station \<1 km from the survey locations at a 15-minute resolution for the duration of the study period.
+
+## Backward Model
+
+As in @ojwang2021, Let us introduce a latent process $Z$ which indicates the causal attribution of disease to one of $k \in \big(1, \ldots, K\big)$ sources with a certain probability:
+
+$$
+Z_i \sim \mathrm{Multinomial}\big(1, \boldsymbol{\pi}\big)
+$$ 
+
+Recall from the forward model that our goal is to find the MLE $\hat{\boldsymbol\theta} = \big(\hat\alpha_t, \hat\mu_{it}, \hat\phi_t)$ at each time step $t$. We accomplish this by maximizing the marginal log-likelihood of our *observed* data, which we assume follows $\mathrm{ZIB}(y_{i} \mid \boldsymbol\theta)$. Note, however, that what we have observed is the joint distribution, $f(y_{i},z_{i})$. That is, the marginal log-likelihood is given by
+
+$$
+\ell(\boldsymbol\theta) = \sum_i\log\mathrm{ZIB}(y_{i}\mid \boldsymbol\theta) = \sum_i\log\left(\sum_z f(y_{i},z_{i})\right) = \sum_i\log\left(\sum_z \mathrm{ZIB}(y_{i}\mid \boldsymbol\theta) \cdot f(z_{i} \mid \boldsymbol\theta)\right)
+$$
+
+This log-likelihood is intractible; however, we can easily optimize a lower bound for it by leveraging the Expectation-Maximization (EM) algorithm. Letting $\Theta = \left(\boldsymbol\theta, \boldsymbol\pi\right)$ we can characterize this lower bound without loss of generality as
+
+$$
+\begin{split}
+Q(\Theta; \Theta^{(h)}) &= \mathbb{E}_z\left[\sum_i\log f(y_{i}, z_{i} \mid \Theta)\right] \\
+&= \sum_i \mathbb{E}_z\left[\log f(y_{i} \mid z_{i}, \boldsymbol\theta) f(z_{i}\mid \boldsymbol \pi)\right] \\
+&= \sum_i \mathbb{E}_z\left[\log f(y_{i} \mid z_{i}, \boldsymbol\theta)\right] + \mathbb{E}_z\left[\log f(z_{i}\mid \boldsymbol \pi)\right] \\
+&= \sum_i\sum_k p_{ik}^{(h)}\log \left(f(y_{i} \mid z_{i})\pi_k\right)
+\end{split}
+$$
+
+where $p_{ik} = p(z_{i} = k \mid y_i, \Theta^{(h)})$, the posterior probability that sample location $i$ was infected by source $k$ given the observed data. Notice also, that we must characterize $f(y_{i} \mid z_{i} = k)$. 
