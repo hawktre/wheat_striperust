@@ -16,13 +16,15 @@
 ## load up the packages we will need:  (uncomment as required)
 library(here)
 library(tidyverse)
+library(parallel)
+library(data.table)
 
 ## Read in the needed functions
 source(here("Code/03a_BackwardGradFun.R"))
 source(here("Code/02a_ForwardGradFun.R"))
 
 # Backward Fit ------------------------------------------------------------
-backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
+backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, tol = 1e-2) {
   
   ## Extract needed data
   intensity <- mod_dat$intensity[,blk,trt,vst]
@@ -34,7 +36,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
   # Initializations
   K <- length(unique(group_id)) #Number of mixture components
   pi <- rep(1/K, K) #Uniform prior
-  theta_init <- forward_fits[block == blk & treat == trt & visit == vst][["theta"]][[1]]
+  theta_init <- inits
   theta_mat <- matrix(theta_init, nrow = length(theta_init), ncol = K) #Create matrix of parameters for each component
   rownames(theta_mat) <- names(theta_init)
   
@@ -54,10 +56,9 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
   # Combine results into an n × K matrix
   mu_mat <- do.call(cbind, mu_list)
   ## Set up convergence criteria and algorithm tracking
-  max_em_iter <- 100
-  tol <- 1e-6
+  max_em_iter <- max_iter
   q_track <- numeric(max_em_iter + 1)
-  
+  numCores <- detectCores() - 1
   # Initial E-step
   p_mat <- e_step(y = intensity, mu_mat = mu_mat, phi = theta_mat['phi',], prior = pi)
 
@@ -66,7 +67,8 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
   # EM loop
   for (iter in 1:max_em_iter) {
     # M-step (optimize theta for each component k) ---------------------------------------------------------------
-    theta_mat <- do.call(cbind, lapply(seq_len(K), function(k) {
+    
+    theta_mat <- do.call(cbind, mclapply(seq_len(K), function(k) {
       fit <- tryCatch(
         optim(
           par     = theta_mat[, k],
@@ -92,7 +94,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
       } else {
         fit$par
       }
-    }))
+    }, mc.cores = numCores, mc.preschedule = FALSE))
     
     ## Update mixture weights 
     pi <- colSums(p_mat)/nrow(p_mat)
@@ -119,9 +121,8 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
       return(data.table(
         config = config,
         block = blk,
-        treat = as.numeric(trt),
+        treat = trt,
         visit = as.numeric(vst),
-        kappa = kappa,
         em_iters = iter + 1,
         converged = FALSE,
         Q_track = list(q_track[1:iter + 1]),
@@ -131,16 +132,16 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, forward_fits) {
       ))
     }
     
-    if ((iter > 1 && abs(q_track[iter + 1] - q_track[iter]) < 1e-2 * (1 + abs(q_track[iter])))) {
+    if ((iter > 1 && abs(q_track[iter + 1] - q_track[iter]) < tol * (1 + abs(q_track[iter])))) {
       return(data.table(
         config = config,
         block = blk,
-        treat = as.numeric(trt),
+        treat = trt,
         visit = as.numeric(vst),
-        kappa = kappa,
         em_iters = iter + 1,
         converged = T,
-        Q_track = list(q_track[1:iter]),
+        Q_track = list(q_track[1:iter +1]),
+        Q_final = q_track[iter+1],
         theta = list(theta_mat),
         p_mat = list(p_mat),
         pi = list(pi)))

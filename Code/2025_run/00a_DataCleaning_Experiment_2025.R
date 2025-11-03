@@ -34,21 +34,27 @@ for (sheet in blocks) {
   stripe[[sheet]] <- read_xlsx(here("DataRaw/StripeRust_2025_norepeat.xlsx"), sheet = sheet)
 }
 
+## inoculum Locations
+inoculum <- read_xlsx(here("DataRaw/StripeRust_2025_norepeat.xlsx"), sheet = "inoculum")
+
+## treatment_key
+treat_key <- read_xlsx(here("DataRaw/StripeRust_2025_norepeat.xlsx"), sheet = "treat_key")
+
+
+# Fromat experimental Data ------------------------------------------------
 stripe_full <- map(stripe, ~ .x |> 
                      pivot_longer(cols = 4:7, 
                                   names_to = "date", 
                                   values_to = "intensity") %>%
-                     mutate(date = mdy(str_remove(date, "\\(\\%\\)")),
+                     mutate(block = substr(Plot, 1, 1),
+                            date = mdy(str_remove(date, "\\(\\%\\)")),
                             visit = as.factor(rep(1:4, length.out = n())),
                             intensity = intensity/100))|> 
   bind_rows() |> 
-  select(Plot, North, East, date, visit, intensity)
+  select(Plot, block, North, East, date, visit, intensity)
 
 ## Clean up names
 names(stripe_full) <- tolower(names(stripe_full))
-
-## inoculum Locations
-inoculum <- read_xlsx(here("DataRaw/StripeRust_2025_norepeat.xlsx"), sheet = "inoculum")
 
 ## Create Unique Plant ID
 id_key <- stripe_full %>% 
@@ -56,3 +62,26 @@ id_key <- stripe_full %>%
   distinct() %>% 
   arrange(north, east) |> 
   mutate(plant_id = row_number())
+
+## Give unique Plant ID to each observation
+stripe_full <- left_join(stripe_full, id_key, by = c("east", "north"))
+
+# Join inoculum and exp data with treatment_key ---------------------------
+inoculum <- left_join(inoculum, treat_key, by = "plot")
+
+stripe_full <- left_join(stripe_full, treat_key, by = "plot")
+
+# Organize columns and save out -------------------------------------------
+inoculum <- inoculum %>% 
+  mutate(block = substr(plot, 1, 1)) %>% 
+  select(block, treat, inoc_id, east, north)
+
+saveRDS(inoculum, here("DataProcessed/experimental/2025/inocs_2025.rds"))
+
+stripe_full <- stripe_full %>% 
+  select(block, treat, visit, plant_id, north, east, date, intensity)
+
+saveRDS(stripe_full, here("DataProcessed/experimental/2025/stripe_clean_2025.rds"))
+
+
+

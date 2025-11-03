@@ -1,12 +1,12 @@
 ## ---------------------------
 ##
-## Script name: 01b_DataModPrep.R
+## Script name: 01_RunDataFormat_2025.R
 ##
 ## Purpose of script: Sort data into clean structure for modeling 
 ##
 ## Author: Trent VanHawkins
 ##
-## Date Created: 2025-07-17
+## Date Created: 2025-11-01
 ##
 ##
 ## ---------------------------
@@ -25,11 +25,9 @@ source(here("Code/01a_DataFormat_Fun.R"))
 source(here("Code/02a_ForwardGradFun.R"))
 
 # Read in the data --------------------------------------------------------
-stripe <- readRDS(here("DataProcessed/experimental/stripe_clean.rds"))
-wind <- readRDS(here("DataProcessed/wind/wind_clean.rds"))
-clusters <- readRDS(here("DataProcessed/experimental/clusters.rds"))
-inocs <- readRDS(here("DataProcessed/experimental/inoc_sp.rds"))
-
+stripe <- readRDS(here("DataProcessed/experimental/2025/stripe_clean_2025.rds"))
+wind <- readRDS(here("DataProcessed/wind/wind_clean_2025.rds"))
+inocs <- readRDS(here("DataProcessed/experimental/2025/inocs_2025.rds"))
 # Create intensity array --------------------------------------------------
 n_plants <- length(unique(stripe$plant_id))
 n_blocks <- length(unique(stripe$block))
@@ -40,20 +38,20 @@ intensity <- array(NA_real_, dim = c(n_plants, n_blocks, n_trt, n_visits),
                    dimnames = list(
                      plant = paste0(1:n_plants),  # no plant names
                      block = LETTERS[1:n_blocks],
-                     treat = paste0(sort(unique(stripe$treat))),
+                     treat = sort(unique(stripe$treat)),
                      visit = paste0(1:n_visits)))
 
 for (blk in dimnames(intensity)$block) {
   for(trt in dimnames(intensity)$treat){
     for(vst in dimnames(intensity)$visit){
-        intensity[,blk,trt,vst] <- stripe %>% 
-          filter(block == blk, treat == as.numeric(trt), visit == as.numeric(vst)) %>% 
-          arrange(plant_id) |> pull(intensity)
+      intensity[,blk,trt,vst] <- stripe %>% 
+        filter(block == blk, treat == trt, visit == as.numeric(vst)) %>% 
+        arrange(plant_id) |> pull(intensity)
     }
   }
 }
 
-intensity[,'A', '1', '2']
+intensity[,'A', 'single', '2']
 
 # Create Distance and Wind Matrices -------------------
 
@@ -90,7 +88,7 @@ wind_array <- array(NA_real_, dim = c(n_plants, n_plants, n_blocks, n_trt, n_vis
                       NULL,
                       NULL,
                       block = LETTERS[1:n_blocks],
-                      treat = paste0(sort(unique(stripe$treat))),
+                      treat = sort(unique(stripe$treat)),
                       visit = paste0(2:n_visits)))
 
 
@@ -98,56 +96,44 @@ wind_array <- array(NA_real_, dim = c(n_plants, n_plants, n_blocks, n_trt, n_vis
 for (blk in dimnames(wind_array)$block) {
   for(trt in dimnames(wind_array)$treat){
     for(vst in dimnames(wind_array)$visit){
-      first <- survey_periods %>% filter(block == blk, treat == as.numeric(trt), visit == as.numeric(vst)) %>% pull(date_prev)
-      last <- survey_periods %>% filter(block == blk, treat == as.numeric(trt), visit == as.numeric(vst)) %>% pull(date)
+      first <- survey_periods %>% filter(block == blk, treat == trt, visit == as.numeric(vst)) %>% pull(date_prev)
+      last <- survey_periods %>% filter(block == blk, treat == trt, visit == as.numeric(vst)) %>% pull(date)
       wind_array[,,blk,trt,vst] <- get_wind_mat(first_day = first, last_day = last, wind = wind, dir.mat = dir_mat)
     }
   }
 }
 
 
-# Get Inits ---------------------------------------------------------------
-#Define Parameters
-param_names <- c("beta", "delta", "gamma", "kappa", "phi")
-n_params <- length(param_names)
-
-#Define values of kappa to try
-kappa_try <- seq(0.25,2.5,0.25)
-
 # Assign Groups (For Backward Model) --------------------------------------
-stripe_sp <- stripe %>% select(plant_id, east, north) %>% distinct() %>% arrange(plant_id) %>% st_as_sf(coords = c("east", "north"))
+stripe_sp <- stripe %>% select(plant_id, east, north) %>% distinct() %>% st_as_sf(coords = c("east", "north")) %>% arrange(plant_id)
 
 ##Create grids (see DataFromat_Funs)
-stripe_4 <- get_grid(stripe_sp, 2, 2, "K = 4")
-stripe_8h <- get_grid(stripe_sp, 4, 2, "K = 8 (Horizontal)")
-stripe_8v <- get_grid(stripe_sp, 2, 4, "K = 8 (Vertical)")
-stripe_16 <- get_grid(stripe_sp, 4, 4, "K = 16")
-stripe_64 <- get_grid(stripe_sp, 8, 8, "K = 64")
+stripe_6 <- get_grid(stripe_sp, 2, 3, "K = 6")
+stripe_12 <- get_grid(stripe_sp, 4, 3, "K = 12")
+stripe_72 <- get_grid(stripe_sp, 8, 9, "K = 72")
 
 ## Merge to list
 grids <- list(
-  "4" = stripe_4,
-  "8h" = stripe_8h,
-  "8v" = stripe_8v,
-  "16" = stripe_16,
-  "64" = stripe_64
+  "6" = stripe_6,
+  "12" = stripe_12,
+  "72" = stripe_72
 )
 
-saveRDS(grids, here("DataProcessed/experimental/grids_sp.rds"))
+saveRDS(grids, here("DataProcessed/experimental/2025/grids_sp_2025.rds"))
 
 grid_dist <- map(grids, .f = ~st_distance(st_centroid(.x[["grid"]])))
 
 plant_group <- array(NA_real_, dim = c(n_plants, length(grids)),
-                   dimnames = list(
-                     plant = paste0(1:n_plants),  # no plant names
-                     config = names(grids)))
+                     dimnames = list(
+                       plant = paste0(1:n_plants),  # no plant names
+                       config = names(grids)))
 
 for (conf in dimnames(plant_group)$config) {
   plant_group[,conf] <- grids[[conf]][["points"]] |> arrange(plant_id) |> pull(grid_id)
 }
 
-single_inocs <- inocs %>% select(block, treat, inoc_id, geometry) %>% 
-  filter(treat == 1)
+single_inocs <- inocs %>% st_as_sf(coords = c("east", "north")) %>% select(block, treat, inoc_id, geometry) %>% 
+  filter(treat == "single")
 
 true_infect <- array(NA_real_, dim = c(n_blocks, length(grids)),
                      dimnames = list(block = LETTERS[1:n_blocks],
@@ -159,7 +145,6 @@ for (blk in dimnames(true_infect)$block) {
   }
 }
 
-
 # Create Final List -------------------------------------------------------
 
 mod_dat <- list(intensity = intensity,
@@ -170,4 +155,4 @@ mod_dat <- list(intensity = intensity,
                 grid_dist = grid_dist)
 
 
-saveRDS(mod_dat, here("DataProcessed/experimental/mod_dat_arrays.rds"))
+saveRDS(mod_dat, here("DataProcessed/experimental/2025/mod_dat_arrays_2025.rds"))
