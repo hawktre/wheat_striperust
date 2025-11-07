@@ -23,54 +23,56 @@ source(here("Code/03a_BackwardGradFun.R"))
 source(here("Code/02a_ForwardGradFun.R"))
 
 # Backward Fit ------------------------------------------------------------
-backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, tol = 1e-2) {
+backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, tol = 1e-4) {
   
   ## Extract needed data
-  intensity <- mod_dat$intensity[,blk,trt,vst]
-  intensity_prev <- mod_dat$intensity[,blk,trt,as.numeric(vst)-1]
-  wind <- mod_dat$wind[,,blk,trt,vst]
+  intensity <- mod_dat$intensity[, blk, trt, vst]
+  intensity_prev <- mod_dat$intensity[, blk, trt, as.numeric(vst) - 1]
+  wind <- mod_dat$wind[, , blk, trt, vst]
   dist <- mod_dat$dist
   group_id <- mod_dat$groups[, config]
   
   # Initializations
-  K <- length(unique(group_id)) #Number of mixture components
-  pi <- rep(1/K, K) #Uniform prior
+  K <- length(unique(group_id))
+  pi <- rep(1 / K, K)
   theta_init <- inits
-  theta_mat <- matrix(theta_init, nrow = length(theta_init), ncol = K) #Create matrix of parameters for each component
-  rownames(theta_mat) <- names(theta_init)
+  theta_old <- matrix(theta_init, nrow = length(theta_init), ncol = K)
+  rownames(theta_old) <- names(theta_init)
   
-  #Initialize mu_mat
-  # Combine results into an n × K matrix
+  # Initialize mu_mat
   mu_list <- lapply(seq_len(K), function(k) {
-  get_mu(
-    par        = theta_mat[, k],     # parameters for component k
-    y_prev     = intensity_prev,     # previous intensities
-    wind_mat   = wind,               # full wind matrix
-    dist_mat   = dist,               # full distance matrix
-    group_id   = group_id,           # vector of group assignments
-    component  = k                 # current component index
-  )
-})
-
-  # Combine results into an n × K matrix
+    get_mu(
+      par        = theta_old[, k],
+      y_prev     = intensity_prev,
+      wind_mat   = wind,
+      dist_mat   = dist,
+      group_id   = group_id,
+      component  = k
+    )
+  })
   mu_mat <- do.call(cbind, mu_list)
-  ## Set up convergence criteria and algorithm tracking
+  
+  ## Tracking
   max_em_iter <- max_iter
-  q_track <- numeric(max_em_iter + 1)
+  q_track <- numeric(max_em_iter)
+  observed_ll <- numeric(max_em_iter)
   numCores <- detectCores() - 1
+  
   # Initial E-step
-  p_mat <- e_step(y = intensity, mu_mat = mu_mat, phi = theta_mat['phi',], prior = pi)
-
-  ## Compute Q
-  q_track[1] <- Q_fun(y = intensity, mu_mat = mu_mat, phi = theta_mat['phi',], pi_vec = pi, p_mat = p_mat)
+  p_mat <- e_step(y = intensity, mu_mat = mu_mat, phi = theta_old['phi',], prior = pi)
+  
+  ## Initial Q and log-likelihood
+  q_track[1] <- Q_fun(y = intensity, mu_mat = mu_mat, phi = theta_old['phi',], pi_vec = pi, p_mat = p_mat)
+  observed_ll[1] <- loglik_obs(y = intensity, mu_mat = mu_mat, phi = theta_old['phi',], pi_vec = pi)
+  
   # EM loop
-  for (iter in 1:max_em_iter) {
-    # M-step (optimize theta for each component k) ---------------------------------------------------------------
+  for (iter in 2:max_em_iter) {
     
-    theta_mat <- do.call(cbind, mclapply(seq_len(K), function(k) {
+    # M-step
+    theta_new <- do.call(cbind, mclapply(seq_len(K), function(k) {
       fit <- tryCatch(
         optim(
-          par     = theta_mat[, k],
+          par     = theta_old[, k],
           fn      = m_step_obj,
           gr      = m_step_grad,
           method  = "BFGS",
@@ -89,67 +91,60 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
         }
       )
       if (is.null(fit) || fit$convergence != 0) {
-        theta_mat[, k]
+        theta_old[, k]
       } else {
         fit$par
       }
     }, mc.cores = numCores, mc.preschedule = FALSE))
     
     ## Update mixture weights 
-    pi <- colSums(p_mat)/nrow(p_mat)
-
-    # (E-step will go here next)
-
+    pi <- colSums(p_mat) / nrow(p_mat)
+    
     ## Update mu_mat
     mu_mat <- do.call(cbind, lapply(seq_len(K), function(k) {
       get_mu(
-        par        = theta_mat[, k],     # parameters for component k
-        y_prev     = intensity_prev,     # previous intensities
-        wind_mat   = wind,               # full wind matrix
-        dist_mat   = dist,               # full distance matrix
-        group_id   = group_id,           # vector of group assignments
-        component  = k                  # current component index
-      )}))
+        par        = theta_new[, k],
+        y_prev     = intensity_prev,
+        wind_mat   = wind,
+        dist_mat   = dist,
+        group_id   = group_id,
+        component  = k
+      )
+    }))
     
-    p_mat <- e_step(y = intensity, mu_mat = mu_mat, phi = theta_mat['phi',], prior = pi)
+    ## E-step: recompute responsibilities
+    p_mat <- e_step(y = intensity, mu_mat = mu_mat, phi = theta_new['phi',], prior = pi)
     
-    ## Compute Q
-    q_track[iter + 1] <- Q_fun(y = intensity, mu_mat = mu_mat, phi = theta_mat['phi',], pi_vec = pi, p_mat = p_mat)
-
-    if (!is.finite(q_track[iter + 1]) || (iter + 1) == max_em_iter) {
+    ## Compute observed log-likelihood and Q
+    observed_ll[iter] <- loglik_obs(y = intensity, mu_mat = mu_mat, phi = theta_new['phi',], pi_vec = pi)
+    q_track[iter] <- Q_fun(y = intensity, mu_mat = mu_mat, phi = theta_new['phi',], pi_vec = pi, p_mat = p_mat)
+    
+    ## Convergence checks
+    if (!is.finite(observed_ll[iter]) || iter == max_em_iter) {
       return(data.table(
-        config = config,
-        block = blk,
-        treat = trt,
-        visit = as.numeric(vst),
-        em_iters = iter + 1,
-        converged = FALSE,
-        Q_track = list(q_track[1:iter + 1]),
-        Q_final = q_track[iter+1],
-        theta = list(theta_mat),
-        p_mat = list(p_mat),
-        pi = list(pi)
+        config = config, block = blk, treat = trt, visit = as.numeric(vst),
+        em_iters = iter, converged = FALSE,
+        Q_track = list(q_track[1:iter]), Q_final = q_track[iter],
+        theta = list(theta_new), p_mat = list(p_mat), pi = list(pi)
       ))
     }
     
-    if ((iter > 1 && abs(q_track[iter + 1] - q_track[iter]) < tol * (1 + abs(q_track[iter])))) {
+    theta_diff <- max(abs(theta_new - theta_old))
+    observed_ll_diff <- abs(observed_ll[iter] - observed_ll[iter - 1])
+    if (( observed_ll_diff < tol * (1 + abs(observed_ll[iter - 1]))) ||
+        theta_diff < tol) {
       return(data.table(
-        config = config,
-        block = blk,
-        treat = trt,
-        visit = as.numeric(vst),
-        em_iters = iter + 1,
-        converged = T,
-        Q_track = list(q_track[1:iter +1]),
-        Q_final = q_track[iter+1],
-        theta = list(theta_mat),
-        p_mat = list(p_mat),
-        pi = list(pi)))
+        config = config, block = blk, treat = trt, visit = as.numeric(vst),
+        em_iters = iter, converged = TRUE,
+        Q_track = list(q_track[1:iter]), Q_final = q_track[iter],
+        theta = list(theta_new), p_mat = list(p_mat), pi = list(pi)
+      ))
     }
-
-
+    
+    theta_old <- theta_new
   }
 }
+
 
 source_pred <- function(config, blk, trt, vst, p_mat, mod_dat) {
   

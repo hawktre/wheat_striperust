@@ -57,7 +57,7 @@ backward <- pmap(combos_backward, ~backward_fit(config = ..1,
                                                 vst = ..4, 
                                                 inits = ..5, 
                                                 mod_dat = mod_dat,
-                                                tol = 1e-4, max_iter = 200), .progress = T) %>% rbindlist()
+                                                tol = 1e-4, max_iter = 1000), .progress = T) %>% rbindlist()
 end <- Sys.time()
 runtime <- difftime(end, start, units = "mins")  # could be "mins", "hours", etc.
 message("Runtime = ", round(runtime, 2), " minutes")

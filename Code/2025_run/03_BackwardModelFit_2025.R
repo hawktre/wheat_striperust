@@ -46,7 +46,7 @@ configs <- dimnames(mod_dat$groups)[["config"]]
 combos_backward <- expand.grid(config = configs, blk = blocks, trt = treats, vst = visits[-1], stringsAsFactors = FALSE)
 
 start <- Sys.time()
-backward <- pmap(combos_backward, ~backward_fit(..1, ..2, ..3, ..4, mod_dat = mod_dat, forward), .progress = T) %>% rbindlist()
+backward <- pmap(combos_backward, ~backward_fit(..1, ..2, ..3, ..4, mod_dat = mod_dat, forward, max_iter = 1000, tol = 1e-4), .progress = T) %>% rbindlist()
 end <- Sys.time()
 runtime <- difftime(end, start, units = "mins")  # could be "mins", "hours", etc.
 message("Runtime = ", round(runtime, 2), " minutes")

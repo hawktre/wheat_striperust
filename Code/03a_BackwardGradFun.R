@@ -120,6 +120,30 @@ Q_fun <- function(y, mu_mat, phi, p_mat, pi_vec) {
   return(-Q_val)
 }
 
+loglik_obs <- function(y, mu_mat, phi, pi_vec) {
+  K <- ncol(mu_mat)
+  phi <- exp(phi)
+  
+  # Compute log-likelihood contributions for each component
+  lik_list <- lapply(seq_len(K), function(k) {
+    loglik_zibeta(y, mu = mu_mat[, k], phi = phi[k], sum = FALSE, log = FALSE)
+  })
+  
+  # Combine into n × K matrix of component densities (not logs)
+  lik_mat <- do.call(cbind, lik_list)
+  
+  # Mixture density for each observation: sum_k pi_k * f_k(y_i)
+  mix_density <- lik_mat %*% pi_vec
+  
+  # Avoid log(0)
+  mix_density <- pmax(mix_density, .Machine$double.eps)
+  
+  # Observed-data log-likelihood
+  loglik_val <- sum(log(mix_density))
+  
+  return(loglik_val)
+}
+
 
 
 # E-step ------------------------------------------------------------------
