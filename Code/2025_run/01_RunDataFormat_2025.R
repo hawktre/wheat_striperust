@@ -51,8 +51,6 @@ for (blk in dimnames(intensity)$block) {
   }
 }
 
-intensity[,'A', 'single', '2']
-
 # Create Distance and Wind Matrices -------------------
 
 ## Create a df of survey periods
@@ -121,7 +119,7 @@ grids <- list(
 
 saveRDS(grids, here("DataProcessed/experimental/2025/grids_sp_2025.rds"))
 
-grid_dist <- map(grids, .f = ~st_distance(st_centroid(.x[["grid"]])))
+grid_dist <- map(grids, .f = ~st_distance(st_centroid(st_geometry(.x[["grid"]]))))
 
 plant_group <- array(NA_real_, dim = c(n_plants, length(grids)),
                      dimnames = list(

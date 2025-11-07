@@ -15,7 +15,6 @@
 
 ## load up the packages we will need:  (uncomment as required)
 library(here)
-library(tidyverse)
 library(parallel)
 library(data.table)
 
@@ -75,7 +74,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
           fn      = m_step_obj,
           gr      = m_step_grad,
           method  = "BFGS",
-          control = list(maxit = 100, reltol = 1e-4),
+          control = list(maxit = 1000, reltol = 1e-4),
           y_current = intensity,
           y_prev    = intensity_prev,
           wind_mat  = wind,
@@ -126,6 +125,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
         em_iters = iter + 1,
         converged = FALSE,
         Q_track = list(q_track[1:iter + 1]),
+        Q_final = q_track[iter+1],
         theta = list(theta_mat),
         p_mat = list(p_mat),
         pi = list(pi)

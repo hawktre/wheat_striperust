@@ -26,10 +26,8 @@ options(scipen = 6, digits = 4)
 
 ## load up the packages we will need:  (uncomment as required)
 
-library(tidyverse)
-library(furrr)
-library(future)
 library(here)
+library(tidyverse)
 library(data.table)
 
 ## Read in necessary functions
@@ -70,12 +68,12 @@ combos_backward$init <- pmap(combos_backward %>% select(-config), function(blk, 
 
 
 start <- Sys.time()
-backward <- pmap(combos_backward %>% filter(trt == "1"), ~{backward_fit(config = ..1, 
+backward <- pmap(combos_backward[which(combos_backward$trt == 1),], ~{backward_fit(config = ..1, 
                                                 blk = ..2, 
                                                 trt = ..3, 
                                                 vst = ..4, 
                                                 inits = ..6, 
-                                                mod_dat = mod_dat) %>% mutate(kappa = ..5)}, .progress = T) %>% 
+                                                mod_dat = mod_dat, tol = 1e-3) %>% mutate(kappa = ..5)}, .progress = T) %>% 
   rbindlist() 
 end <- Sys.time()
 runtime <- difftime(end, start, units = "mins")  # could be "mins", "hours", etc.
@@ -85,7 +83,8 @@ backward_trim <- backward %>%
   select(config, block, treat, visit, kappa, everything()) %>% 
   group_by(config, block, treat, visit) %>%
   slice_min(Q_final) %>% 
-  ungroup()
+  ungroup() %>% 
+  as.data.table()
 # 4. Source prediction for treat == 1
 backward_t1 <- backward_trim[treat == 1]
 sources_predicted <- backward_t1 %>% 

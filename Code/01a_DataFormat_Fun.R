@@ -98,10 +98,12 @@ get_grid <- function(pts_sf, nrow, ncol, name) {
 
   # build grid covering bbox
   true_bbox <- st_bbox(pts_sf)
-  bbox_sfc <- st_as_sfc(st_bbox(c(xmin = floor(true_bbox[["xmin"]] - 1),
-                                  ymin = floor(true_bbox[["ymin"]] - 1),
-                                  xmax = ceiling(true_bbox[["xmax"]] + 1),
-                                  ymax = ceiling(true_bbox[["ymax"]] + 1))))
+  dx <- true_bbox[["xmin"]]
+  dy <- true_bbox[["ymin"]]
+  bbox_sfc <- st_as_sfc(st_bbox(c(xmin = 0,
+                                  ymin = 0,
+                                  xmax = true_bbox[["xmax"]] + dx,
+                                  ymax = true_bbox[["ymax"]] + dy)))
   grid <- st_make_grid(bbox_sfc,
                        n = c(ncol, nrow),
                        what = "polygons") %>%
