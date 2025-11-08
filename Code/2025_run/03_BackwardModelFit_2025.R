@@ -25,8 +25,12 @@ options(scipen = 6, digits = 4)
 ## ---------------------------
 
 ## load up the packages we will need:  (uncomment as required)
-library(here)
 
+library(tidyverse)
+library(furrr)
+library(future)
+library(here)
+library(data.table)
 
 ## Read in necessary functions
 source(here("Code/03b_BackwardModelFun.R"))
@@ -43,10 +47,17 @@ configs <- dimnames(mod_dat$groups)[["config"]]
 
 # Fit the model -----------------------------------------------------------
 # 2. Fit backward model
-combos_backward <- expand.grid(config = configs, blk = blocks, trt = treats, vst = visits[-1], stringsAsFactors = FALSE)
+combos_backward <- expand.grid(config = configs, blk = blocks, trt = treats, vst = visits[-1], stringsAsFactors = FALSE)    
+combos_backward <- left_join(combos_backward, forward %>% select(block, treat, visit, theta), by = c("blk"="block", "trt"="treat", "vst"="visit"))
 
 start <- Sys.time()
-backward <- pmap(combos_backward, ~backward_fit(..1, ..2, ..3, ..4, mod_dat = mod_dat, forward, max_iter = 1000, tol = 1e-4), .progress = T) %>% rbindlist()
+backward <- pmap(combos_backward, ~backward_fit(config = ..1, 
+                                                blk = ..2, 
+                                                trt = ..3, 
+                                                vst = ..4, 
+                                                inits = ..5, 
+                                                mod_dat = mod_dat,
+                                                tol = 1e-5, max_iter = 1000), .progress = T) %>% rbindlist()
 end <- Sys.time()
 runtime <- difftime(end, start, units = "mins")  # could be "mins", "hours", etc.
 message("Runtime = ", round(runtime, 2), " minutes")
@@ -64,10 +75,10 @@ sources_predicted <- backward_t1 %>%
   rbindlist()
 
 results_merge <- left_join(backward |> mutate(treat = as.factor(treat), 
-                                              visit = as.factor(visit)), forward |> mutate(treat = as.factor(treat), 
-                                                                                           visit = as.factor(visit)), by = c("block", "treat", "visit"), suffix = c(".backward", ".forward")) %>% 
+visit = as.factor(visit)), forward |> mutate(treat = as.factor(treat), 
+visit = as.factor(visit)), by = c("block", "treat", "visit"), suffix = c(".backward", ".forward")) %>% 
   left_join(sources_predicted |> mutate(treat = as.factor(treat), 
-                                        visit = as.factor(visit)), by = c("config", "block", "treat", "visit")) 
+visit = as.factor(visit)), by = c("config", "block", "treat", "visit")) 
 
 saveRDS(results_merge, here("DataProcessed/results/backward_model/backward_fits_2025.rds"))
 

@@ -601,15 +601,17 @@ backward_2024_sensitivity_min <- backward_2024_sensitivity %>%
 backward_2024_full <- rbind(backward_2024_t1, backward_2024_sensitivity_min)  
 
 backward_2024_full %>% 
-  group_by(init, visit) %>% 
+  group_by(init, config, visit) %>% 
   summarise(acc = mean(accuracy),
             dist_acc = mean(dist_acc),
             dist_error = mean(dist_error)) %>% 
   ungroup() %>% 
+  kable() |> 
+  kable_styling()
   pivot_wider(names_from = init, values_from = c(dist_acc, acc, dist_error)) %>% 
   select(visit, starts_with("acc"), starts_with("dist_acc"), starts_with("dist_error")) %>% 
   kable(
-    format = "latex",
+    #format = "latex",
     booktabs = TRUE,
     digits = 3,
     col.names = c(

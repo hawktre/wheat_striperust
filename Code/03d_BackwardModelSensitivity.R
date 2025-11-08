@@ -73,7 +73,7 @@ backward <- pmap(combos_backward[which(combos_backward$trt == 1),], ~{backward_f
                                                 trt = ..3, 
                                                 vst = ..4, 
                                                 inits = ..6, 
-                                                mod_dat = mod_dat, tol = 1e-4, max_iter = 1000) %>% mutate(kappa = ..5)}, .progress = T) %>% 
+                                                mod_dat = mod_dat, tol = 1e-5, max_iter = 1000) %>% mutate(kappa = ..5)}, .progress = T) %>% 
   rbindlist() 
 end <- Sys.time()
 runtime <- difftime(end, start, units = "mins")  # could be "mins", "hours", etc.
