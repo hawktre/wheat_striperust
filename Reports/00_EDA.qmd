@@ -56,7 +56,7 @@ This experiment was conducted between the months of April and July of 2024 at th
 
 ## Data Acquisition, Cleaning, and Exploration
 
-Survey data, along with inoculum locations were provided by Chris Mundt. Additional data capturing wind speed (mph) and direction (degrees azimuth) were acquired from a local weather station \<1 km from the survey locations at a 15-minute resolution for the duration of the study period.
+Survey data, along with inoculum locations were provided by Chris Mundt. v
 
 # Exploratory Data Analysis
 

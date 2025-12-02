@@ -341,14 +341,17 @@ grids_2024 %>%
   mutate(name = factor(name, levels = c("K = 4", "K = 8 (Horizontal)", "K = 8 (Vertical)", "K = 16", "K = 64"))) %>% 
   ggplot()+
   geom_sf(fill = "transparent")+
-  geom_sf_text(aes(label = grid_id), size = 1.5)+
-  geom_sf(data = inocs_2024 %>% filter(treat == 1), shape = 23, aes(fill = block))+
-  labs(x = "East (m)", y = "North (m)", title = "2024 Experimental Design (Single Inoculation)", fill = "Inoculation Point (Block)") +
-  facet_grid(block~name)+
+  geom_sf_text(aes(label = grid_id), size = 2)+
+  geom_sf(data = inocs_2024 %>% filter(block == "D"), aes(shape = "Inoculation"), fill = "#CC0000", size = 1.5)+
+  labs(x = "East (m)", y = "North (m)", fill = "Inoculation") +
+  facet_grid(treat~name, labeller = labeller(
+    treat = function(x) paste0(x, " inoculation(s)")
+  ))+
+  scale_shape_manual(values = 23, name = "Legend")+
   theme_classic()+
   theme(legend.position = "bottom")
 
-ggsave(filename = "experimental_design_2024.png", path = here("Reports/EEID_Presentation/figures/experimental/"), width = 8, height = 6, units = "in")
+ggsave(filename = "experimental_design_2024_blockC.png", path = here("Reports/EEID_Presentation/figures/experimental/"), width = 8, height = 6, units = "in")
 
 ## 2025
 grids_2025 <- rbind(design_2025$`6`$grid,
@@ -601,7 +604,7 @@ backward_2024_sensitivity_min <- backward_2024_sensitivity %>%
 backward_2024_full <- rbind(backward_2024_t1, backward_2024_sensitivity_min)  
 
 backward_2024_full %>% 
-  group_by(init, config, visit) %>% 
+  group_by(init, visit) %>% 
   summarise(acc = mean(accuracy),
             dist_acc = mean(dist_acc),
             dist_error = mean(dist_error)) %>% 

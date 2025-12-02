@@ -35,7 +35,7 @@ n_plants <- length(unique(stripe$plant_id))
 n_blocks <- length(unique(stripe$block))
 n_trt <- length(unique(stripe$treat))
 n_visits <- length(unique(stripe$visit))
-
+n_inocs <- length(unique(inocs$inoc_id))
 intensity <- array(NA_real_, dim = c(n_plants, n_blocks, n_trt, n_visits),
                    dimnames = list(
                      plant = paste0(1:n_plants),  # no plant names
@@ -137,6 +137,8 @@ saveRDS(grids, here("DataProcessed/experimental/grids_sp.rds"))
 
 grid_dist <- map(grids, .f = ~st_distance(st_centroid(.x[["grid"]])))
 
+grids_test <- map(grids, .f = ~.x[["grid"]] %>% mutate(centroid = st_centroid(geometry)))
+
 plant_group <- array(NA_real_, dim = c(n_plants, length(grids)),
                    dimnames = list(
                      plant = paste0(1:n_plants),  # no plant names
@@ -146,17 +148,27 @@ for (conf in dimnames(plant_group)$config) {
   plant_group[,conf] <- grids[[conf]][["points"]] |> arrange(plant_id) |> pull(grid_id)
 }
 
-single_inocs <- inocs %>% select(block, treat, inoc_id, geometry) %>% 
-  filter(treat == 1)
+inocs_clean <- inocs %>% select(block, treat, inoc_id, geometry)
 
-true_infect <- array(NA_real_, dim = c(n_blocks, length(grids)),
+true_infect <- array(NA_real_, dim = c(n_blocks, n_trt, n_inocs, length(grids)),
                      dimnames = list(block = LETTERS[1:n_blocks],
+                                     treat = paste0(sort(unique(stripe$treat))),
+                                     inoc = paste0(sort(unique(inocs$inoc_id))),
                                      config = names(grids)))
+
+
 for (blk in dimnames(true_infect)$block) {
-  for (conf in dimnames(true_infect)$config) {
-    true_infect[blk,conf] <- single_inocs %>% filter(block == blk) %>% 
-      st_join(grids[[conf]][["grid"]]) %>% pull(grid_id)
-  }
+  for(trt in dimnames(true_infect)$treat){
+    for(inoc in dimnames(true_infect)$inoc){
+      for (conf in dimnames(true_infect)$config){
+        print(paste0("Running Block: ", blk, " Treat: ", trt, " Inoc: ", inoc, "Config: ", conf))
+        tmp <- inocs_clean %>% filter(block == blk, treat == trt, inoc_id == inoc) %>% pull(geometry)
+        if(length(tmp) == 0){next}
+        true_infect[blk,trt,inoc,conf] <- which.min(st_distance(x = tmp, y = st_centroid(grids[[conf]]$grid)))
+        
+    }
+    }
+    }
 }
 
 
