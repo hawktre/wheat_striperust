@@ -33,7 +33,9 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
   group_id <- mod_dat$groups[, config]
   
   # Initializations
-  K <- length(unique(group_id))
+  S <- as.numeric(trt)
+  combos <- combn(sort(unique(group_id)), S)
+  K <- ncol(combos)
   pi <- rep(1 / K, K)
   theta_init <- inits
   theta_old <- matrix(theta_init, nrow = length(theta_init), ncol = K)
@@ -47,7 +49,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
       wind_mat   = wind,
       dist_mat   = dist,
       group_id   = group_id,
-      component  = k
+      component  = combos[,k]
     )
   })
   mu_mat <- do.call(cbind, mu_list)
@@ -82,7 +84,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
           wind_mat  = wind,
           dist_mat  = dist,
           group_id  = group_id,
-          component = k,
+          component = combos[,k],
           p_vec     = p_mat[, k]
         ),
         error = function(e) {
@@ -108,7 +110,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
         wind_mat   = wind,
         dist_mat   = dist,
         group_id   = group_id,
-        component  = k
+        component  = combos[,k]
       )
     }))
     
@@ -147,7 +149,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
 
 
 source_pred <- function(config, blk, trt, vst, p_mat, mod_dat) {
-  
+  browser()
   # Ensure groups is a factor with levels = 1:n_groups
   groups <- as.factor(mod_dat$groups[,config])
   levels(groups) <- sort(unique(groups))
@@ -155,24 +157,29 @@ source_pred <- function(config, blk, trt, vst, p_mat, mod_dat) {
   # 1. Compute p̄ matrix (average p_mat rows by destination group)
   group_ids <- sort(unique(groups))
   n_groups <- length(group_ids)
+
+  S <- as.numeric(trt)
+  combos <- combn(sort(unique(group_ids)), S)
+  K <- ncol(combos)
   
-  p_bar <- matrix(NA, n_groups, n_groups)
-  rownames(p_bar) <- colnames(p_bar) <- as.character(group_ids)
-  
-  for (g in group_ids) {
-    rows_in_group <- which(groups == g)
-    p_bar[as.character(g), ] <- colMeans(p_mat[rows_in_group, , drop = FALSE])
+  p_bar <- matrix(NA, n_groups, K)
+    
+  for (g in 1:n_groups) {
+    rows_in_group <- which(groups %in% group_ids[g])
+    p_bar[g, ] <- colMeans(p_mat[rows_in_group, , drop = FALSE])
   }
-  
+
   # 2. Predict source group for each destination group (row-wise argmax)
-  predicted_source <- which(p_bar == max(p_bar), arr.ind = TRUE)[[2]]
+  predicted_source <- combos[,which(p_bar == max(p_bar), arr.ind = T)[[2]]]
   
   # 3. Compare to ground truth
-  true_source <- mod_dat$truth[blk, config]  # vector of length n_groups
+  true_source <- as.numeric(mod_dat$truth[blk,trt,,config][1:trt])  
   
-  # 4. Compute distance-weighted accuracy
+  # 4. Compute error (closest that is not already assigned)
   dist <- mod_dat$grid_dist[[config]]
   error <- dist[predicted_source, true_source]
+  test <- apply(error, 1, function(x) min(x))
+  error[!correct,]
   dist_acc <- 1 - (error / max(dist[predicted_source,]))  # normalized distance accuracy
   
   result <- list(
@@ -190,3 +197,21 @@ source_pred <- function(config, blk, trt, vst, p_mat, mod_dat) {
   return(as.data.table(result))
 }
 
+
+error <- matrix(c(
+  0.0, 15.0, 20.0, 25.0,  # Prediction 1: clearly closest to source 1
+  18.0,  0, 22.0, 30.0,  # Prediction 2: clearly closest to source 2
+  10.0, 12.0, 10.0, 35.0,  # Prediction 3: tied (10.0) between sources 1 and 3
+  14.0, 16.0, 10.0, 40.0   # Prediction 4: also tied (10.0) for source 3
+), nrow = 4, byrow = TRUE)
+
+rownames(error) <- c("1", "2", "3", "4")
+colnames(error) <- c("1", "2", "3", "4")
+
+correct <- apply(error, 1, function(x) 0 %in% x)
+incorrect_dist <- error[!correct, !correct]
+wrong_dist <- apply(incorrect_dist, 1, min)
+
+if(any(duplicated(wrong_dist))){
+  
+}

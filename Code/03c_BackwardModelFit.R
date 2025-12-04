@@ -51,20 +51,20 @@ combos_backward <- expand.grid(config = configs, blk = blocks, trt = treats, vst
 combos_backward <- left_join(combos_backward, forward %>% select(block, treat, visit, theta), by = c("blk"="block", "trt"="treat", "vst"="visit"))
 
 start <- Sys.time()
-backward <- pmap(combos_backward, ~backward_fit(config = ..1, 
+backward <- pmap(combos_backward[21,], ~backward_fit(config = ..1, 
                                                 blk = ..2, 
                                                 trt = ..3, 
                                                 vst = ..4, 
                                                 inits = ..5, 
                                                 mod_dat = mod_dat,
-                                                tol = 1e-5, max_iter = 1000), .progress = T) %>% rbindlist()
+                                                tol = 1e-4, max_iter = 1000), .progress = T) %>% rbindlist()
 end <- Sys.time()
 runtime <- difftime(end, start, units = "mins")  # could be "mins", "hours", etc.
 message("Runtime = ", round(runtime, 2), " minutes")
 
 # 4. Source prediction for treat == 1
 backward_t1 <- backward[treat == 1]
-sources_predicted <- backward_t1 %>% 
+sources_predicted <- backward %>% 
   select(config, block, treat, visit, p_mat) %>% 
   pmap(~source_pred(config = ..1,
                     blk = ..2,

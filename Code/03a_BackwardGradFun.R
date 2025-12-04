@@ -24,7 +24,7 @@ kappa_inner_sum_backward <- function(par, y_prev, wind_mat, dist_mat, d0 = 0.01,
   kappa <- par[['kappa']]
 
   #Assume infection came from group k
-  group_k <- which(group_id == component)
+  group_k <- which(group_id %in% component)
   y_prev_k <- y_prev[group_k]
 
   #Compute distance kernel
