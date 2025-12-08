@@ -17,7 +17,7 @@
 library(here)
 library(parallel)
 library(data.table)
-
+library(RcppHungarian)
 ## Read in the needed functions
 source(here("Code/03a_BackwardGradFun.R"))
 source(here("Code/02a_ForwardGradFun.R"))
@@ -147,7 +147,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
   }
 }
 
-library(RcppHungarian)
+
 # Create function for distance-weighted accuracy -------------------------
 dist_acc <- function(error_mat){
   
