@@ -12,6 +12,6 @@ if (!dir.exists(user_lib)) {
 options(repos = c(CRAN = "https://cloud.r-project.org")) 
 
 # Install required packages if not already installed
-pkgs <- c("data.table", "here", "dplyr", "purrr")
+pkgs <- c("data.table", "here", "dplyr", "purrr", "RcppHungarian")
 
 install.packages(pkgs, dependencies = TRUE, Ncpus = 4)
