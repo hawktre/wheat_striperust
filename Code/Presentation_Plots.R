@@ -342,7 +342,7 @@ grids_2024 %>%
   ggplot()+
   geom_sf(fill = "transparent")+
   geom_sf_text(aes(label = grid_id), size = 2)+
-  geom_sf(data = inocs_2024 %>% filter(block == "D"), aes(shape = "Inoculation"), fill = "#CC0000", size = 1.5)+
+  geom_sf(data = inocs_2024 %>% filter(block == "A"), aes(shape = "Inoculation"), fill = "#CC0000", size = 1.5)+
   labs(x = "East (m)", y = "North (m)", fill = "Inoculation") +
   facet_grid(treat~name, labeller = labeller(
     treat = function(x) paste0(x, " inoculation(s)")
@@ -351,7 +351,7 @@ grids_2024 %>%
   theme_classic()+
   theme(legend.position = "bottom")
 
-ggsave(filename = "experimental_design_2024_blockC.png", path = here("Reports/EEID_Presentation/figures/experimental/"), width = 8, height = 6, units = "in")
+ggsave(filename = "experimental_design_2024_blockA.png", path = here("Reports/EEID_Presentation/figures/experimental/"), width = 8, height = 6, units = "in")
 
 ## 2025
 grids_2025 <- rbind(design_2025$`6`$grid,

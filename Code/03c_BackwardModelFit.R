@@ -48,29 +48,31 @@ configs <- dimnames(mod_dat$groups)[["config"]]
 # Fit the model -----------------------------------------------------------
 # 2. Fit backward model
 combos_backward <- expand.grid(config = configs, blk = blocks, trt = treats, vst = visits[-1], stringsAsFactors = FALSE)
-combos_backward <- left_join(combos_backward, forward %>% select(block, treat, visit, theta), by = c("blk"="block", "trt"="treat", "vst"="visit"))
+combos_backward <- left_join(combos_backward, forward %>% select(block, treat, visit, theta), by = c("blk"="block", "trt"="treat", "vst"="visit"))|> filter(!(config == "64" & trt %in% c(2,4)))
 
 start <- Sys.time()
-backward <- pmap(combos_backward[21,], ~backward_fit(config = ..1, 
+backward <- pmap(combos_backward, ~backward_fit(config = ..1, 
                                                 blk = ..2, 
                                                 trt = ..3, 
                                                 vst = ..4, 
                                                 inits = ..5, 
                                                 mod_dat = mod_dat,
-                                                tol = 1e-4, max_iter = 1000), .progress = T) %>% rbindlist()
+                                                tol = 1e-4, 
+                                                max_iter = 1000,
+                                              n_src = length(unique(mod_dat$truth[..2, ..3, ,..1])))) %>% rbindlist()
 end <- Sys.time()
 runtime <- difftime(end, start, units = "mins")  # could be "mins", "hours", etc.
 message("Runtime = ", round(runtime, 2), " minutes")
 
 # 4. Source prediction for treat == 1
-backward_t1 <- backward[treat == 1]
 sources_predicted <- backward %>% 
-  select(config, block, treat, visit, p_mat) %>% 
+  select(config, block, treat, visit, p_mat, n_src) %>% 
   pmap(~source_pred(config = ..1,
                     blk = ..2,
                     trt = ..3,
                     vst = ..4,
                     p_mat = ..5,
+                    n_src = ..6,
                     mod_dat = mod_dat)) %>% 
   rbindlist()
 

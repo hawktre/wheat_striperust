@@ -23,8 +23,8 @@ source(here("Code/03a_BackwardGradFun.R"))
 source(here("Code/02a_ForwardGradFun.R"))
 
 # Backward Fit ------------------------------------------------------------
-backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, tol = 1e-4) {
-
+backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, tol = 1e-4, n_src) {
+  
   ## Extract needed data
   intensity <- mod_dat$intensity[, blk, trt, vst]
   intensity_prev <- mod_dat$intensity[, blk, trt, as.numeric(vst) - 1]
@@ -33,7 +33,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
   group_id <- mod_dat$groups[, config]
   
   # Initializations
-  S <- as.numeric(trt)
+  S <- n_src
   combos <- combn(sort(unique(group_id)), S)
   K <- ncol(combos)
   pi <- rep(1 / K, K)
@@ -124,7 +124,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
     ## Convergence checks
     if (!is.finite(observed_ll[iter]) || iter == max_em_iter) {
       return(data.table(
-        config = config, block = blk, treat = trt, visit = as.numeric(vst),
+        config = config, block = blk, treat = trt, visit = as.numeric(vst), n_src = n_src,
         em_iters = iter, converged = FALSE,
         Q_track = list(q_track[1:iter]), Q_final = q_track[iter],
         theta = list(theta_new), p_mat = list(p_mat), pi = list(pi)
@@ -136,7 +136,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
     if (( observed_ll_diff < tol * (1 + abs(observed_ll[iter - 1]))) ||
         theta_diff < tol) {
       return(data.table(
-        config = config, block = blk, treat = trt, visit = as.numeric(vst),
+        config = config, block = blk, treat = trt, visit = as.numeric(vst), n_src = n_src,
         em_iters = iter, converged = TRUE,
         Q_track = list(q_track[1:iter]), Q_final = q_track[iter],
         theta = list(theta_new), p_mat = list(p_mat), pi = list(pi)
@@ -147,9 +147,55 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
   }
 }
 
+library(RcppHungarian)
+# Create function for distance-weighted accuracy -------------------------
+dist_acc <- function(error_mat){
+  
+  #Just return the metric if length 1
+  if(length(error_mat) == 1){
+    d_pred <- error_mat
+    return(d_pred)
+  }
+  
+  #Make sure n_preds is the same as n_srcs
+  if(ncol(error_mat) != nrow(error_mat)){
+    print("Error: Not a square Matrix")
+    stop()
+  }
+  
+  #Assign the number of sources
+  S <- ncol(error_mat)
 
-source_pred <- function(config, blk, trt, vst, p_mat, mod_dat) {
-  browser()
+  #Create a vector to store distances
+  d_pred <- numeric(S)
+  names(d_pred) <- rownames(error_mat)
+
+  #Check if any are correct and assign them
+  correct <- apply(error_mat, 1, function(x) 0 %in% x)
+  
+  if(sum(correct) > 0){
+    d_pred[correct] <- 0
+    
+    #If they are all correct, just returnt all zeros
+    if(all(correct)){return(d_pred)}
+  }
+
+  #Assign the remaining predictions and get their errors
+  incorrect_dist <- error_mat[!correct, !correct]
+  
+  #If there is only one incorrect, assign it to the remaining source
+  if(length(incorrect_dist == 1)){
+    d_pred[!correct] <- incorrect_dist
+  }else{
+  assignment <- HungarianSolver(incorrect_dist)
+  d_pred[!correct] <- apply(assignment$pairs, 1, function(x) incorrect_dist[x[1], x[2]])
+  }
+  #Compute error metric
+  return(d_pred)
+}
+
+source_pred <- function(config, blk, trt, vst, n_src, p_mat, mod_dat) {
+
   # Ensure groups is a factor with levels = 1:n_groups
   groups <- as.factor(mod_dat$groups[,config])
   levels(groups) <- sort(unique(groups))
@@ -158,7 +204,7 @@ source_pred <- function(config, blk, trt, vst, p_mat, mod_dat) {
   group_ids <- sort(unique(groups))
   n_groups <- length(group_ids)
 
-  S <- as.numeric(trt)
+  S <- as.numeric(n_src)
   combos <- combn(sort(unique(group_ids)), S)
   K <- ncol(combos)
   
@@ -173,45 +219,28 @@ source_pred <- function(config, blk, trt, vst, p_mat, mod_dat) {
   predicted_source <- combos[,which(p_bar == max(p_bar), arr.ind = T)[[2]]]
   
   # 3. Compare to ground truth
-  true_source <- as.numeric(mod_dat$truth[blk,trt,,config][1:trt])  
+  true_source <- sort(unique(as.numeric(mod_dat$truth[blk,trt,,config][1:trt])))
   
   # 4. Compute error (closest that is not already assigned)
   dist <- mod_dat$grid_dist[[config]]
   error <- dist[predicted_source, true_source]
-  test <- apply(error, 1, function(x) min(x))
-  error[!correct,]
-  dist_acc <- 1 - (error / max(dist[predicted_source,]))  # normalized distance accuracy
-  
+  d_pred <- dist_acc(error)
+  weighted_acc <- 1 - (d_pred/max(dist))
+  acc <- mean(predicted_source %in% true_source)
+  n_correct <- sum(predicted_source %in% true_source)
   result <- list(
     config = config,
     block = blk,
     treat = trt,
     visit = vst,
+    n_src = n_src,
     p_bar = list(p_bar),
-    predicted_source = predicted_source,
-    true_source = true_source,
-    dist_error = error,
-    dist_acc = dist_acc
+    mean_error = mean(d_pred),
+    n_correct = n_correct,
+    acc = acc,
+    dist_acc = mean(weighted_acc),
+    component_dist_acc = list(weighted_acc)
   )
   # 5. Compute other metrics 
   return(as.data.table(result))
-}
-
-
-error <- matrix(c(
-  0.0, 15.0, 20.0, 25.0,  # Prediction 1: clearly closest to source 1
-  18.0,  0, 22.0, 30.0,  # Prediction 2: clearly closest to source 2
-  10.0, 12.0, 10.0, 35.0,  # Prediction 3: tied (10.0) between sources 1 and 3
-  14.0, 16.0, 10.0, 40.0   # Prediction 4: also tied (10.0) for source 3
-), nrow = 4, byrow = TRUE)
-
-rownames(error) <- c("1", "2", "3", "4")
-colnames(error) <- c("1", "2", "3", "4")
-
-correct <- apply(error, 1, function(x) 0 %in% x)
-incorrect_dist <- error[!correct, !correct]
-wrong_dist <- apply(incorrect_dist, 1, min)
-
-if(any(duplicated(wrong_dist))){
-  
 }
