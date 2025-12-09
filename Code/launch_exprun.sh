@@ -2,7 +2,7 @@
 #SBATCH -J BackwardFit                # Job name
 #SBATCH -o backward_fit.out           # Stdout log
 #SBATCH -e backward_fit.err           # Stderr log
-#SBATCH -c 24                        # CPU cores
+#SBATCH -c 32                        # CPU cores
 #SBATCH --mem=32G                      # Memory per node
 #SBATCH --time=1-00:00:00             # Walltime (adjust as needed)
 

@@ -63,6 +63,8 @@ end <- Sys.time()
 runtime <- difftime(end, start, units = "mins")  # could be "mins", "hours", etc.
 message("Runtime = ", round(runtime, 2), " minutes")
 
+saveRDS(backward, here("DataProcessed/results/backward_model/backward_nopreds.rds"))
+
 # 4. Source prediction for treat == 1
 sources_predicted <- backward %>% 
   select(config, block, treat, visit, p_mat, n_src) %>% 
