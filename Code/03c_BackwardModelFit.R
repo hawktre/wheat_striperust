@@ -34,7 +34,7 @@ configs <- dimnames(mod_dat$groups)[["config"]]
 combos_backward <- expand.grid(config = configs, blk = blocks, trt = treats, vst = visits[-1], stringsAsFactors = FALSE)
 combos_backward <- left_join(combos_backward, forward %>% select(block, treat, visit, theta), 
                              by = c("blk"="block", "trt"="treat", "vst"="visit")) |> 
-  filter(!(config == "64" & trt %in% c(2,4)))
+  filter(!(config == "64" & trt == 4))
 
 # Get array task ID (which row to process)
 task_id <- as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID"))
