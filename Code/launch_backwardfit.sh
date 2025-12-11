@@ -7,8 +7,8 @@ rm -f DataProcessed/results/backward_model/logs/backward_fit_*.out DataProcessed
 mkdir -p DataProcessed/results/backward_model/logs
 
 # Get number of rows
-NROWS=$(Rscript --vanilla get_nrows.R)
+NROWS=$(Rscript --vanilla Code/get_nrows.R)
 
 echo "Submitting array job with $NROWS tasks"
 
-sbatch --array=1-${NROWS}%20 Code/backward_fit.slurm
+sbatch --array=1-${NROWS}%20 Code/launch_backwardfit.sh
