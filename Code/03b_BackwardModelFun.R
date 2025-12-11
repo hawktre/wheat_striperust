@@ -23,7 +23,7 @@ source(here("Code/03a_BackwardGradFun.R"))
 source(here("Code/02a_ForwardGradFun.R"))
 
 # Backward Fit ------------------------------------------------------------
-backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, tol = 1e-4, n_src) {
+backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, tol = 1e-4) {
   
   ## Extract needed data
   intensity <- mod_dat$intensity[, blk, trt, vst]
@@ -33,6 +33,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
   group_id <- mod_dat$groups[, config]
   
   # Initializations
+  n_src <- length(unique(na.omit(mod_dat$truth[blk, trt,,config])))
   S <- n_src
   combos <- combn(sort(unique(group_id)), S)
   K <- ncol(combos)
@@ -150,7 +151,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
 
 # Create function for distance-weighted accuracy -------------------------
 dist_acc <- function(error_mat){
-  
+
   #Just return the metric if length 1
   if(length(error_mat) == 1){
     d_pred <- error_mat

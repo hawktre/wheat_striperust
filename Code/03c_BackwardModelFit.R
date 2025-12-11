@@ -2,7 +2,7 @@
 ##
 ## Script name: 03c_BackwardModelFit.R
 ##
-## Purpose of script: Fit the backward source-prediction model
+## Purpose of script: Fit the backward source-prediction model (array version)
 ##
 ## Author: Trent VanHawkins
 ##
@@ -10,24 +10,10 @@
 ##
 ##
 ## ---------------------------
-##
-## Notes:
-##   
-##
-## ---------------------------
 
-## ---------------------------
-
-## view outputs in non-scientific notation
-
-options(scipen = 6, digits = 4) 
-
-## ---------------------------
-
-## load up the packages we will need:  (uncomment as required)
+options(scipen = 6, digits = 4)
 
 library(dplyr)
-library(purrr)
 library(here)
 library(data.table)
 
@@ -44,44 +30,41 @@ treats <- dimnames(mod_dat$intensity)[["treat"]]
 visits <- dimnames(mod_dat$intensity)[["visit"]]
 configs <- dimnames(mod_dat$groups)[["config"]]
 
-# Fit the model -----------------------------------------------------------
-# 2. Fit backward model
+# Create full combinations
 combos_backward <- expand.grid(config = configs, blk = blocks, trt = treats, vst = visits[-1], stringsAsFactors = FALSE)
-combos_backward <- left_join(combos_backward, forward %>% select(block, treat, visit, theta), by = c("blk"="block", "trt"="treat", "vst"="visit"))|> filter(!(config == "64" & trt %in% c(2,4)))
+combos_backward <- left_join(combos_backward, forward %>% select(block, treat, visit, theta), 
+                             by = c("blk"="block", "trt"="treat", "vst"="visit")) |> 
+  filter(!(config == "64" & trt %in% c(2,4)))
+
+# Get array task ID (which row to process)
+task_id <- as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID"))
+
+if (is.na(task_id)) {
+  stop("SLURM_ARRAY_TASK_ID not set. This script must be run as a SLURM array job.")
+}
+
+# Process only this task's row
+combo <- combos_backward[task_id, ]
+
+message("Processing task ", task_id, " of ", nrow(combos_backward))
+message("Config: ", combo$config, ", Block: ", combo$blk, ", Treat: ", combo$trt, ", Visit: ", combo$vst)
 
 start <- Sys.time()
-backward <- pmap(combos_backward, ~backward_fit(config = ..1, 
-                                                blk = ..2, 
-                                                trt = ..3, 
-                                                vst = ..4, 
-                                                inits = ..5, 
-                                                mod_dat = mod_dat,
-                                                tol = 1e-4, 
-                                                max_iter = 1000,
-                                              n_src = length(unique(mod_dat$truth[..2, ..3, ,..1])))) %>% rbindlist()
+backward_result <- backward_fit(config = combo$config,
+                                blk = combo$blk,
+                                trt = combo$trt,
+                                vst = combo$vst,
+                                inits = combo$theta,
+                                mod_dat = mod_dat,
+                                tol = 1e-4,
+                                max_iter = 1000)
 end <- Sys.time()
-runtime <- difftime(end, start, units = "mins")  # could be "mins", "hours", etc.
+runtime <- difftime(end, start, units = "mins")
 message("Runtime = ", round(runtime, 2), " minutes")
 
-saveRDS(backward, here("DataProcessed/results/backward_model/backward_nopreds.rds"))
+# Save individual result
+output_dir <- here("DataProcessed/results/backward_model/array_results")
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+saveRDS(backward_result, file.path(output_dir, paste0("backward_", task_id, ".rds")))
 
-# 4. Source prediction for treat == 1
-sources_predicted <- backward %>% 
-  select(config, block, treat, visit, p_mat, n_src) %>% 
-  pmap(~source_pred(config = ..1,
-                    blk = ..2,
-                    trt = ..3,
-                    vst = ..4,
-                    p_mat = ..5,
-                    n_src = ..6,
-                    mod_dat = mod_dat)) %>% 
-  rbindlist()
-
-results_merge <- left_join(backward |> mutate(treat = as.factor(treat), 
-visit = as.factor(visit)), forward |> mutate(treat = as.factor(treat), 
-visit = as.factor(visit)), by = c("block", "treat", "visit"), suffix = c(".backward", ".forward")) %>% 
-  left_join(sources_predicted |> mutate(treat = as.factor(treat), 
-visit = as.factor(visit)), by = c("config", "block", "treat", "visit")) 
-
-saveRDS(results_merge, here("DataProcessed/results/backward_model/backward_fits.rds"))
-
+message("Task ", task_id, " completed successfully")
