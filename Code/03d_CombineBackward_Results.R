@@ -24,28 +24,6 @@ message("Found ", length(result_files), " result files")
 
 backward <- map(result_files, readRDS) %>% rbindlist()
 
-# Source prediction for treat == 1
-sources_predicted <- backward %>%
-  select(config, block, treat, visit, p_mat, n_src) %>%
-  pmap(~source_pred(config = ..1,
-                    blk = ..2,
-                    trt = ..3,
-                    vst = ..4,
-                    p_mat = ..5,
-                    n_src = ..6,
-                    mod_dat = mod_dat)) %>%
-  rbindlist()
-
-results_merge <- left_join(backward |> mutate(treat = as.factor(treat),
-                                               visit = as.factor(visit)), 
-                           forward |> mutate(treat = as.factor(treat),
-                                            visit = as.factor(visit)), 
-                           by = c("block", "treat", "visit"), 
-                           suffix = c(".backward", ".forward")) %>%
-  left_join(sources_predicted |> mutate(treat = as.factor(treat),
-                                        visit = as.factor(visit)), 
-            by = c("config", "block", "treat", "visit"))
-
-saveRDS(results_merge, here("DataProcessed/results/backward_model/backward_fits.rds"))
+saveRDS(backward, here("DataProcessed/results/backward_model/backward_fits.rds"))
 
 message("Successfully combined all results")

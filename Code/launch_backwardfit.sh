@@ -17,4 +17,4 @@ NROWS=$(Rscript --vanilla Code/get_nrows.R)
 
 echo "Submitting array job with $NROWS tasks"
 
-#sbatch --array=1-${NROWS}%20 Code/launch_backwardfit.sh
+sbatch --array=1-${NROWS}%20 Code/backward_fit.sh
