@@ -59,7 +59,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
   max_em_iter <- max_iter
   q_track <- numeric(max_em_iter)
   observed_ll <- numeric(max_em_iter)
-  numCores <- detectCores() - 1
+  numCores <- min(K, detectCores())
   
   # Initial E-step
   p_mat <- e_step(y = intensity, mu_mat = mu_mat, phi = theta_old['phi',], prior = pi)
