@@ -2,9 +2,8 @@
 #SBATCH -J BackwardFit                # Job name
 #SBATCH -o DataProcessed/results/backward_model/logs/backward_fit_%A_%a.out     # Stdout log (%A=job ID, %a=array index)
 #SBATCH -e DataProcessed/results/backward_model/logs/backward_fit_%A_%a.err     # Stderr log
-#SBATCH --array=1-1           
 #SBATCH -c 10                         # CPU cores per task
-#SBATCH --mem=2G                     # Memory per task
+#SBATCH --mem=1G                     # Memory per task
 #SBATCH --time=02:00:00             # Walltime per task
 
 set -euo pipefail
