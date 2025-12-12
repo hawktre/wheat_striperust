@@ -37,8 +37,8 @@ combos_backward <- left_join(combos_backward, forward %>% select(block, treat, v
   filter(!(config == "64" & trt == 4))
 
 # Get array task ID (which row to process)
-#task_id <- as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID"))
-task_id <- 2
+task_id <- as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID"))
+
 if (is.na(task_id)) {
   stop("SLURM_ARRAY_TASK_ID not set. This script must be run as a SLURM array job.")
 }
@@ -65,6 +65,6 @@ message("Runtime = ", round(runtime, 2), " minutes")
 # Save individual result
 output_dir <- here("DataProcessed/results/backward_model/array_results")
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
-saveRDS(backward_result, file.path(output_dir, paste0("backward_", task_id, ".rds")))
+saveRDS(backward_result, file.path(output_dir, paste0("backward_blk", combo$blk,"_trt",combo$trt,"_vst",combo$vst,"_config",combo$config, ".rds")))
 
 message("Task ", task_id, " completed successfully")
