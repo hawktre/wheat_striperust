@@ -191,7 +191,7 @@ m_step_obj <- function(par, y_current, y_prev, wind_mat, dist_mat, group_id, com
 }
 
 
-# M-step ------------------------------------------------------------------
+# M-step (Individual Parameters (for eack K)) ------------------------------------------------------------------
 m_step_grad <- function(par, y_current, y_prev, wind_mat, dist_mat, group_id, component, p_vec) {
   beta  <- par["beta"]
   delta <- par["delta"]
@@ -265,3 +265,76 @@ m_step_grad <- function(par, y_current, y_prev, wind_mat, dist_mat, group_id, co
   -c(beta = d_beta, delta = d_delta, gamma = d_gamma, kappa = d_kappa, phi = d_phi)
 }
 
+# M-step (Shared Gardient) -----------------------------------------------
+m_step_grad_shared <- function(par, y_current, y_prev, wind_mat, dist_mat, group_id, component, p_vec) {
+  beta  <- par["beta"]
+  delta <- par["delta"]
+  gamma <- par["gamma"]
+  kappa <- par["kappa"]
+  log_phi <- par["phi"]
+  phi <- exp(log_phi)
+
+  non_zero <- which(y_current > 0)
+
+  # Recompute dispersal and its derivative (with respect to kappa)
+  dispersal <- kappa_inner_sum_backward(
+    par = par, 
+    y_prev = y_prev,
+    wind_mat = wind_mat, 
+    dist_mat = dist_mat,
+     derivative = FALSE,
+    group_id = group_id, 
+    component = component
+  )
+
+  dispersal_grad <- kappa_inner_sum_backward(
+    par = par, 
+    y_prev = y_prev,
+    wind_mat = wind_mat, 
+    dist_mat = dist_mat,
+     derivative = T,
+    group_id = group_id, 
+    component = component
+  )
+
+  # Recompute mu
+  mu_vec <- get_mu(
+    par = par,
+    y_prev = y_prev,
+    wind_mat = wind_mat,
+    dist_mat = dist_mat,
+    group_id = group_id,
+    component = component
+  )
+
+  # Subset to nonzero responses
+  y_current <- y_current[non_zero]
+  auto_vec <- y_prev[non_zero] * (1 - y_prev[non_zero])
+  dispersal <- dispersal[non_zero]
+  dispersal_grad <- dispersal_grad[non_zero]
+  p_vec <- p_vec[non_zero]
+  mu_vec <- mu_vec[non_zero]
+
+  # Core derivatives
+  y_star <- logit(y_current)
+  mu_star <- digamma(mu_vec * phi) - digamma((1 - mu_vec) * phi)
+  weight <- phi * (y_star - mu_star) * mu_vec * (1 - mu_vec)
+
+  # Gradients
+  d_beta  <- sum(p_vec * weight)
+  d_delta <- sum(p_vec * weight * auto_vec)
+  d_gamma <- sum(p_vec * weight * dispersal)
+  d_kappa <- sum(p_vec * weight * (-gamma) * dispersal_grad)
+
+  # φ gradient (log-scale)
+  d_phi_raw <- sum(p_vec * (
+    digamma(phi) -
+      mu_vec * digamma(mu_vec * phi) -
+      (1 - mu_vec) * digamma((1 - mu_vec) * phi) +
+      mu_vec * log(y_current) +
+      (1 - mu_vec) * log(1 - y_current)
+  ))
+  d_phi <- phi * d_phi_raw  # chain rule for log(φ)
+
+  -c(beta = d_beta, delta = d_delta, gamma = d_gamma, kappa = d_kappa, phi = d_phi)
+}
