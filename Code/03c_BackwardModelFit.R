@@ -37,8 +37,8 @@ combos_backward <- left_join(combos_backward, forward %>% select(block, treat, v
   filter(!(config == "64" & trt == 4))
 
 # Get array task ID (which row to process)
-task_id <- as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID"))
-
+#task_id <- as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID"))
+task_id <- 2
 if (is.na(task_id)) {
   stop("SLURM_ARRAY_TASK_ID not set. This script must be run as a SLURM array job.")
 }
@@ -54,7 +54,7 @@ backward_result <- backward_fit(config = combo$config,
                                 blk = combo$blk,
                                 trt = combo$trt,
                                 vst = combo$vst,
-                                inits = combo$theta,
+                                inits = combo$theta[[1]],
                                 mod_dat = mod_dat,
                                 tol = 1e-4,
                                 max_iter = 1000)
