@@ -31,7 +31,7 @@ library(tidyverse)
 library(data.table)
 
 ## Read in necessary functions
-source(here("Code/03b_BackwardModelFun.R"))
+source(here("Code/R/backward_model/03b_BackwardModelFun.R"))
 
 ## Read in forward fits
 forward <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))

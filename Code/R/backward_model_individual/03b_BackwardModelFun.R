@@ -19,8 +19,8 @@ library(parallel)
 library(data.table)
 library(RcppHungarian)
 ## Read in the needed functions
-source(here("Code/03a_BackwardGradFun.R"))
-source(here("Code/02a_ForwardGradFun.R"))
+source(here("Code/R/backward_model/03a_BackwardGradFun.R"))
+source(here("Code/R/forward_model//02a_ForwardGradFun.R"))
 
 # Backward Fit ------------------------------------------------------------
 backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, tol = 1e-4) {
@@ -37,7 +37,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
   S <- n_src
   combos <- combn(sort(unique(group_id)), S)
   K <- ncol(combos)
-  pi <- rep(1 / K, K)
+  prior <- rep(1 / K, K)
   theta_init <- inits
   theta_old <- matrix(theta_init, nrow = length(theta_init), ncol = K)
   rownames(theta_old) <- names(theta_init)
@@ -62,7 +62,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
   numCores <- min(K, detectCores())
   
   # Initial E-step
-  p_mat <- e_step(y = intensity, mu_mat = mu_mat, phi = theta_old['phi',], prior = pi)
+  p_mat <- e_step(y = intensity, mu_mat = mu_mat, phi = theta_old['phi',], pi = prior)
   
   ## Initial Q and log-likelihood
   q_track[1] <- Q_fun(y = intensity, mu_mat = mu_mat, phi = theta_old['phi',], pi_vec = pi, p_mat = p_mat)
@@ -151,7 +151,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
 
 # Create function for distance-weighted accuracy -------------------------
 dist_acc <- function(error_mat){
-
+  
   #Just return the metric if length 1
   if(length(error_mat) == 1){
     d_pred <- error_mat
@@ -169,34 +169,35 @@ dist_acc <- function(error_mat){
 
   #Create a vector to store distances
   d_pred <- numeric(S)
-  names(d_pred) <- rownames(error_mat)
+  names(d_pred) <- colnames(error_mat)
 
   #Check if any are correct and assign them
-  correct <- apply(error_mat, 1, function(x) 0 %in% x)
+  correct_source <- apply(error_mat, 2, function(x) 0 %in% x)
+  correct_pred <- apply(error_mat, 1, function(x) 0 %in% x)
   
-  if(sum(correct) > 0){
-    d_pred[correct] <- 0
+  if(sum(correct_source) > 0){
+    d_pred[correct_source] <- 0
     
     #If they are all correct, just returnt all zeros
-    if(all(correct)){return(d_pred)}
+    if(all(correct_source)){return(d_pred)}
   }
 
   #Assign the remaining predictions and get their errors
-  incorrect_dist <- error_mat[!correct, !correct]
+  incorrect_dist <- error_mat[!correct_pred,!correct_source]
   
   #If there is only one incorrect, assign it to the remaining source
-  if(length(incorrect_dist == 1)){
-    d_pred[!correct] <- incorrect_dist
+  if(length(incorrect_dist) == 1){
+    d_pred[!correct_source] <- incorrect_dist
   }else{
   assignment <- HungarianSolver(incorrect_dist)
-  d_pred[!correct] <- apply(assignment$pairs, 1, function(x) incorrect_dist[x[1], x[2]])
+  d_pred[!correct_source] <- apply(assignment$pairs, 1, function(x) incorrect_dist[x[1], x[2]])
   }
   #Compute error metric
   return(d_pred)
 }
 
 source_pred <- function(config, blk, trt, vst, n_src, p_mat, mod_dat) {
-
+ 
   # Ensure groups is a factor with levels = 1:n_groups
   groups <- as.factor(mod_dat$groups[,config])
   levels(groups) <- sort(unique(groups))
@@ -217,7 +218,7 @@ source_pred <- function(config, blk, trt, vst, n_src, p_mat, mod_dat) {
   }
 
   # 2. Predict source group for each destination group (row-wise argmax)
-  predicted_source <- combos[,which(p_bar == max(p_bar), arr.ind = T)[[2]]]
+  predicted_source <- combos[,which(p_bar == max(p_bar, na.rm = T), arr.ind = T)[[2]]]
   
   # 3. Compare to ground truth
   true_source <- sort(unique(as.numeric(mod_dat$truth[blk,trt,,config][1:trt])))
