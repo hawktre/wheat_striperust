@@ -174,8 +174,15 @@ e_step <- function(par, y_current, y_prev, wind, dist, group_id, components, pi_
 
   # Posterior probabilities for each observation and component
   p_mat <- wl_mat / rowSums(wl_mat)
-  
-  return(p_mat)
+
+  # Compute Q-function
+  Q <- Q_fun(y_current, mu_mat, phi, p_mat, pi_vec)
+
+  # Compute obersed ll
+  ll_obs <- loglik_obs(y_current, mu_mat, phi, pi_vec)
+  return(list("p_mat" = p_mat,
+  "Q" = Q,
+  "ll_obs" = ll_obs))
 }
 
 # M-step (Shared Parameters) ------------------------------------------------------------------
@@ -185,7 +192,7 @@ m_step <- function(theta_old, intensity, intensity_prev, wind, dist, group_id, p
           fn      = m_step_obj,
           gr      = m_step_grad,
           method  = "BFGS",
-          control = list(maxit = 1000, reltol = 1e-4),
+          control = list(maxit = 1000, reltol = 1e-8),
           y_current = intensity,
           y_prev    = intensity_prev,
           wind_mat  = wind,
@@ -195,7 +202,7 @@ m_step <- function(theta_old, intensity, intensity_prev, wind, dist, group_id, p
           components = components
         ),
         error = function(e) {
-          message(sprintf("optim() error for component %s: %s", k, conditionMessage(e)))
+          message(sprintf("optim() error: %s", conditionMessage(e)))
           NULL
         }
       )
@@ -306,7 +313,7 @@ m_step_grad <- function(par, y_current, y_prev, wind_mat, dist_mat, group_id, p_
 
   # Gradients
   d_beta  <- sum(p_mat * weight)
-  d_delta <- sum(p_mat * weight * auto_vec)
+  d_delta <- sum(p_mat * weight * auto_mat)
   d_gamma <- sum(p_mat * weight * dispersal)
   d_kappa <- sum(p_mat * weight * (-gamma) * dispersal_grad)
 

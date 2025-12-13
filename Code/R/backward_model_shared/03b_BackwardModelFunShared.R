@@ -45,39 +45,45 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
   
   # Initial E-step
   theta_old <- inits
-  p_mat <- e_step(y = intensity, mu_mat = mu_mat, phi = theta_old[["phi"]], pi_vec = prior)
-  
-  ## Initial Q and log-likelihood
-  q_track[1] <- Q_fun(y = intensity, mu_mat = mu_mat, phi = theta_old[["phi"]], pi_vec = prior, p_mat = p_mat)
-  observed_ll[1] <- loglik_obs(y = intensity, mu_mat = mu_mat, phi = theta_old[["phi"]], pi_vec = prior)
-
-  # EM loop
-  for (iter in 2:max_em_iter) {
-    
-    # M-step
-    params <- m_step(theta_old = theta_old, 
-                    intensity = intensity,
-                    intensity_prev = intensity_prev, 
-                    wind = wind, 
-                    dist = dist, 
-                    group_id = group_id, 
-                    p_mat = p_mat, 
-                    components = combos)
-    
-    ## E-step: recompute responsibilities
-    p_mat <- e_step(par = params$theta_new, 
+  E <- e_step(par = theta_old, 
                     y_current = intensity, 
                     y_prev = intensity_prev, 
                     wind = wind, 
                     dist = dist, 
                     group_id = group_id, 
-                    p_mat = p_mat, 
                     components = combos,
-                  pi_vec = params$pi)
+                  pi_vec = prior)
+  
+  ## Initial Q and log-likelihood
+  q_track[1] <- E$Q
+  observed_ll[1] <- E$ll_obs
+
+  # EM loop
+  for (iter in 2:max_em_iter) {
+
+    # M-step
+    M <- m_step(theta_old = theta_old, 
+                    intensity = intensity,
+                    intensity_prev = intensity_prev, 
+                    wind = wind, 
+                    dist = dist, 
+                    group_id = group_id, 
+                    p_mat = E$p_mat, 
+                    components = combos)
+    
+    ## E-step: recompute responsibilities
+    E <- e_step(par = M$theta_new, 
+                    y_current = intensity, 
+                    y_prev = intensity_prev, 
+                    wind = wind, 
+                    dist = dist, 
+                    group_id = group_id, 
+                    components = combos,
+                  pi_vec = M$pi)
     
     ## Compute observed log-likelihood and Q
-    observed_ll[iter] <- loglik_obs(y = intensity, mu_mat = mu_mat, phi = params$theta_new[["phi"]], pi_vec = params$pi)
-    q_track[iter] <- Q_fun(y = intensity, mu_mat = mu_mat, phi = params$theta_new[["phi"]], pi_vec = params$pi, p_mat = p_mat)
+    observed_ll[iter] <- E$ll_obs
+    q_track[iter] <- E$Q
     
     ## Convergence checks
     if (!is.finite(observed_ll[iter]) || iter == max_em_iter) {
@@ -85,23 +91,23 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
         config = config, block = blk, treat = trt, visit = as.numeric(vst), n_src = S,
         em_iters = iter, converged = FALSE,
         Q_track = list(q_track[1:iter]), Q_final = q_track[iter],
-        theta = list(params$theta_new), p_mat = list(p_mat), pi = list(params$pi)
+        theta = list(M$theta_new), p_mat = list(E$p_mat), pi = list(M$pi)
       ))
     }
     
-    theta_diff <- max(abs(params$theta_new - theta_old))
+    theta_diff <- max(abs(M$theta_new - theta_old))
     observed_ll_diff <- abs(observed_ll[iter] - observed_ll[iter - 1])
-    if (( observed_ll_diff < tol * (1 + abs(observed_ll[iter - 1]))) ||
+    if (( observed_ll_diff < tol) ||
         theta_diff < tol) {
       return(data.table(
         config = config, block = blk, treat = trt, visit = as.numeric(vst), n_src = S,
         em_iters = iter, converged = TRUE,
         Q_track = list(q_track[1:iter]), Q_final = q_track[iter],
-        theta = list(params$theta_new), p_mat = list(p_mat), pi = list(params$pi)
+        theta = list(M$theta_new), p_mat = list(E$p_mat), pi = list(M$pi)
       ))
     }
     
-    theta_old <- params$theta_new
+    theta_old <- M$theta_new
   }
 }
 
