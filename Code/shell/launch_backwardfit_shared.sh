@@ -13,7 +13,7 @@ module load R
 export R_LIBS="$HOME/R_libs/4.4"
 
 # Get number of rows
-NROWS=$(Rscript --vanilla Code/utils/get_nrows.R)
+NROWS=$(Rscript --vanilla Code/R/utils/get_nrows.R)
 
 echo "Submitting array job with $NROWS tasks"
 
