@@ -37,14 +37,35 @@ combos_backward <- left_join(combos_backward, forward %>% select(block, treat, v
                              by = c("blk"="block", "trt"="treat", "vst"="visit")) |> 
   filter(!(config == "64" & trt == "4"))
 
+# Get array task ID (which row to process)
+task_id <- as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID"))
+
+if (is.na(task_id)) {
+  stop("SLURM_ARRAY_TASK_ID not set. This script must be run as a SLURM array job.")
+}
+
+# Process only this task's row
+combo <- combos_backward[task_id, ]
+
+message("Processing task ", task_id, " of ", nrow(combos_backward))
+message("Config: ", combo$config, ", Block: ", combo$blk, ", Treat: ", combo$trt, ", Visit: ", combo$vst)
+
 start <- Sys.time()
-backward <- lapply(seq_len(nrow(combos_backward)), function(row) {
-  combo <- combos_backward[row,]
-  backward_fit(combo$config, combo$blk, combo$trt, combo$vst, mod_dat, combo$theta[[1]], max_iter = 200, tol = 1e-8)
-}) |> rbindlist()
+backward_result <- backward_fit(config = combo$config,
+                                blk = combo$blk,
+                                trt = combo$trt,
+                                vst = combo$vst,
+                                inits = combo$theta[[1]],
+                                mod_dat = mod_dat,
+                                tol = 1e-4,
+                                max_iter = 1000)
 end <- Sys.time()
 runtime <- difftime(end, start, units = "mins")
 message("Runtime = ", round(runtime, 2), " minutes")
 
 # Save individual result
-saveRDS(backward, here("DataProcessed/results/backward_model/backward_fits_shared.rds"))
+output_dir <- here("DataProcessed/results/backward_model/array_results_shared")
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+saveRDS(backward_result, file.path(output_dir, paste0("backward_blk", combo$blk,"_trt",combo$trt,"_vst",combo$vst,"_config",combo$config, "_shared.rds")))
+
+message("Task ", task_id, " completed successfully")
