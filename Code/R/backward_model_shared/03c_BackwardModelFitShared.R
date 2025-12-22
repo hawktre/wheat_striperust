@@ -34,15 +34,14 @@ configs <- dimnames(mod_dat$groups)[["config"]]
 # Create full combinations
 combos_backward <- expand.grid(config = configs, blk = blocks, trt = treats, vst = visits[-1], stringsAsFactors = FALSE)
 combos_backward <- left_join(combos_backward, forward %>% select(block, treat, visit, theta), 
-                             by = c("blk"="block", "trt"="treat", "vst"="visit")) 
-
-
+                             by = c("blk"="block", "trt"="treat", "vst"="visit")) |> 
+  filter(!(config == "64" & trt == "4"))
 
 start <- Sys.time()
-backward <- mclapply(seq_len(nrow(combos_backward)), function(row) {
+backward <- lapply(seq_len(nrow(combos_backward)), function(row) {
   combo <- combos_backward[row,]
   backward_fit(combo$config, combo$blk, combo$trt, combo$vst, mod_dat, combo$theta[[1]], max_iter = 200, tol = 1e-8)
-}, mc.cores = detectCores()-1, mc.preschedule = F) |> rbindlist()
+}) |> rbindlist()
 end <- Sys.time()
 runtime <- difftime(end, start, units = "mins")
 message("Runtime = ", round(runtime, 2), " minutes")

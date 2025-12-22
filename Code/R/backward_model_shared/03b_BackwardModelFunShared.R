@@ -24,7 +24,6 @@ source(here("Code/R/forward_model/02a_ForwardGradFun.R"))
 
 # Backward Fit ------------------------------------------------------------
 backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, tol = 1e-4) {
-  
   ## Extract needed data
   intensity <- mod_dat$intensity[, blk, trt, vst]
   intensity_prev <- mod_dat$intensity[, blk, trt, as.numeric(vst) - 1]
@@ -40,7 +39,6 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
   
   ## Tracking
   max_em_iter <- max_iter
-  q_track <- numeric(max_em_iter)
   observed_ll <- numeric(max_em_iter)
   
   # Initial E-step
@@ -55,7 +53,6 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
                   pi_vec = prior)
   
   ## Initial Q and log-likelihood
-  q_track[1] <- E$Q
   observed_ll[1] <- E$ll_obs
 
   # EM loop
@@ -83,14 +80,14 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
     
     ## Compute observed log-likelihood and Q
     observed_ll[iter] <- E$ll_obs
-    q_track[iter] <- E$Q
+    
     
     ## Convergence checks
     if (!is.finite(observed_ll[iter]) || iter == max_em_iter) {
       return(data.table(
         config = config, block = blk, treat = trt, visit = as.numeric(vst), n_src = S,
         em_iters = iter, converged = FALSE,
-        Q_track = list(q_track[1:iter]), Q_final = q_track[iter],
+        Q_track = list(observed_ll[1:iter]), Q_final = observed_ll[iter],
         theta = list(M$theta_new), p_mat = list(E$p_mat), pi = list(M$pi)
       ))
     }
@@ -102,7 +99,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
       return(data.table(
         config = config, block = blk, treat = trt, visit = as.numeric(vst), n_src = S,
         em_iters = iter, converged = TRUE,
-        Q_track = list(q_track[1:iter]), Q_final = q_track[iter],
+        Q_track = list(observed_ll[1:iter]), Q_final = observed_ll[iter],
         theta = list(M$theta_new), p_mat = list(E$p_mat), pi = list(M$pi)
       ))
     }
