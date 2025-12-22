@@ -2,12 +2,18 @@ library(here)
 library(tidyverse)
 library(data.table)
 
-source(here("Code/R/backward_model/03b_BackwardModelFun.R"))
+source(here("Code/R/backward_model_individual/03b_BackwardModelFun.R"))
 
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
 forward <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))
 backward <- readRDS(here("DataProcessed/results/backward_model/backward_fits.rds"))
+backward_shared <- readRDS(here("DataProcessed/results/backward_model/backward_fits_shared.rds"))
 
+backward_tmp <- backward |> mutate(full_name = paste0("Blk", block, "_trt", treat, "_visit", visit, "_config", config))
+backward_shared_tmp <- backward_shared |> mutate(full_name = paste0("Blk", block, "_trt", treat, "_visit", visit, "_config", config))
+
+backward_tmp |> 
+  filter(!(full_name %in% backward_shared_tmp$full_name)) |> pull(full_name)
 sources_predicted <- backward %>% 
   select(config, block, treat, visit, n_src, p_mat) %>% 
   pmap(~source_pred(config = ..1,

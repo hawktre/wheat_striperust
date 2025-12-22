@@ -19,8 +19,8 @@ library(parallel)
 library(data.table)
 library(RcppHungarian)
 ## Read in the needed functions
-source(here("Code/R/backward_model/03a_BackwardGradFun.R"))
-source(here("Code/R/forward_model//02a_ForwardGradFun.R"))
+source(here("Code/R/backward_model_individual/03a_BackwardGradFun.R"))
+source(here("Code/R/forward_model/02a_ForwardGradFun.R"))
 
 # Backward Fit ------------------------------------------------------------
 backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, tol = 1e-4) {
