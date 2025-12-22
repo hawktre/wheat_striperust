@@ -11,7 +11,7 @@ library(purrr)
 library(here)
 library(data.table)
 
-source(here("Code/R/backward_model/03b_BackwardModelFun.R"))
+source(here("Code/R/backward_model_shared/03b_BackwardModelFunShared.R"))
 
 forward <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
