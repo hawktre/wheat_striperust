@@ -31,7 +31,7 @@ library(tidyverse)
 library(data.table)
 
 ## Read in necessary functions
-source(here("Code/R/backward_model_individual/03b_BackwardModelFun.R"))
+source(here("Code/R/backward_model_shared/03b_BackwardModelFunShared.R"))
 
 ## Read in forward fits
 forward <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))
@@ -67,14 +67,24 @@ combos_backward$init <- pmap(combos_backward %>% select(-config), function(blk, 
 })
 
 
+
 start <- Sys.time()
-backward <- pmap(combos_backward[which(combos_backward$trt == 1),], ~{backward_fit(config = ..1, 
-                                                blk = ..2, 
-                                                trt = ..3, 
-                                                vst = ..4, 
-                                                inits = ..6, 
-                                                mod_dat = mod_dat, tol = 1e-5, max_iter = 1000) %>% mutate(kappa = ..5)}, .progress = T) %>% 
-  rbindlist() 
+backward <- lapply(seq_len(1), function(k) {
+  #Subset the current combination
+  combo <- combos_backward[k,]
+  #Run the fitting
+  tmp <- backward_fit(config = combo$config,
+  blk = combo$blk,
+  trt = combo$trt,
+  vst = combo$vst,
+  inits = combo$init[[1]],
+  mod_dat = mod_dat, 
+  max_iter = 2000,
+  tol = 1e-4)
+  #Annotate which initial value of kappa was used
+  tmp <- tmp |> mutate(kappa = combo$kappa)
+  return(tmp)
+}) |> rbindlist()
 end <- Sys.time()
 runtime <- difftime(end, start, units = "mins")  # could be "mins", "hours", etc.
 message("Runtime = ", round(runtime, 2), " minutes")
@@ -85,22 +95,18 @@ backward_trim <- backward %>%
   slice_min(Q_final) %>% 
   ungroup() %>% 
   as.data.table()
-# 4. Source prediction for treat == 1
-backward_t1 <- backward_trim[treat == 1]
-sources_predicted <- backward_t1 %>% 
-  select(config, block, treat, visit, p_mat) %>% 
+# 4. Source prediction 
+sources_predicted <- backward_trim %>% 
+  select(config, block, treat, visit, n_src, p_mat) %>% 
   pmap(~source_pred(config = ..1,
                     blk = ..2,
                     trt = ..3,
                     vst = ..4,
-                    p_mat = ..5,
+                    n_src = ..5,
+                    p_mat = ..6,
+
                     mod_dat = mod_dat)) %>% 
   rbindlist()
 
-results_merge <- left_join(backward |> mutate(treat = as.factor(treat), 
-                                              visit = as.factor(visit)), forward |> mutate(treat = as.factor(treat), 
-                                                                                           visit = as.factor(visit)), by = c("block", "treat", "visit"), suffix = c(".backward", ".forward")) %>% 
-  left_join(sources_predicted |> mutate(treat = as.factor(treat), 
-                                        visit = as.factor(visit)), by = c("config", "block", "treat", "visit")) 
-
-saveRDS(results_merge, here("DataProcessed/results/backward_model/backward_fits_sensitivity.rds"))
+results <- left_join(backward_trim, sources_predicted, by = c("config", "block", "treat", "visit", "n_src"))
+saveRDS(results, here("DataProcessed/results/backward_model/backward_fits_sensitivity.rds"))

@@ -51,11 +51,11 @@ forward_2024 <- readRDS(here("DataProcessed/results/forward_model/forward_fits.r
 forward_2025 <- readRDS(here("DataProcessed/results/forward_model/forward_fits_2025.rds"))
 
 ## Backward Model
-backward_2024 <- readRDS(here("DataProcessed/results/backward_model/backward_fits.rds"))
-backward_2025 <- readRDS(here("DataProcessed/results/backward_model/backward_fits_2025.rds"))
+backward_2024 <- readRDS(here("DataProcessed/results/backward_model/backward_fits_eval.rds"))
+#backward_2025 <- readRDS(here("DataProcessed/results/backward_model/backward_fits_2025.rds"))
 
 ## Sensitivity Analysis
-backward_2024_sensitivity <- readRDS(here("DataProcessed/results/backward_model/backward_fits_sensitivity.rds"))
+#backward_2024_sensitivity <- readRDS(here("DataProcessed/results/backward_model/backward_fits_sensitivity.rds"))
 
 ## Set plotting colors
 intensity_cols <- wesanderson::wes_palette("Zissou1", 7, type = c("continuous"))
@@ -342,7 +342,7 @@ grids_2024 %>%
   ggplot()+
   geom_sf(fill = "transparent")+
   geom_sf_text(aes(label = grid_id), size = 2)+
-  geom_sf(data = inocs_2024 %>% filter(block == "A"), aes(shape = "Inoculation"), fill = "#CC0000", size = 1.5)+
+  geom_sf(data = inocs_2024 %>% filter(block == "B"), aes(shape = "Inoculation"), fill = "#CC0000", size = 1.5)+
   labs(x = "East (m)", y = "North (m)", fill = "Inoculation") +
   facet_grid(treat~name, labeller = labeller(
     treat = function(x) paste0(x, " inoculation(s)")
@@ -351,7 +351,7 @@ grids_2024 %>%
   theme_classic()+
   theme(legend.position = "bottom")
 
-ggsave(filename = "experimental_design_2024_blockA.png", path = here("Reports/EEID_Presentation/figures/experimental/"), width = 8, height = 6, units = "in")
+ggsave(filename = "experimental_design_2024_blockB.png", path = here("Reports/EEID_Presentation/figures/experimental/"), width = 8, height = 6, units = "in")
 
 ## 2025
 grids_2025 <- rbind(design_2025$`6`$grid,
@@ -543,8 +543,8 @@ ggplot()+
 ggsave(filename = "rawdata_blockA_2024.png", path = here("Reports/EEID_Presentation/figures/experimental/"), width = 10, height = 5, units = "in")
 
 ggplot()+
-  geom_sf(data = stripe_2025 %>% filter(block == "A"), aes(color = intensity))+
-  geom_sf(data = inocs_2025 %>% filter(block == "A"), aes(fill = "Inoculation Point"), shape = 23, size = 3)+
+  geom_sf(data = stripe_2025 %>% filter(block == "B"), aes(color = intensity))+
+  geom_sf(data = inocs_2025 %>% filter(block == "B"), aes(fill = "Inoculation Point"), shape = 23, size = 3)+
   facet_grid(treat ~ date)+
   labs(x = "East (m)",
        y = "North (m)",
@@ -660,3 +660,31 @@ sims_clean %>%
   kable(format = "latex",
         col.names = c("Configuration", "Visit", "Acc.", "Dist. Acc.", "Dist. Error", "Miss Error"),
         booktabs = T)
+
+
+# Comparing shared vs individual component parameters --------------------
+backward_2024 |> 
+  mutate(config = factor(config, levels = c("4", "8h", "8v", "16", "64"))) |> 
+  group_by(result_type, config, n_src, visit) |> 
+  summarise(N = n(),
+error = mean(mean_error),
+            acc = mean(acc),
+            dist_acc = mean(dist_acc)) |> 
+  pivot_wider(names_from = result_type, values_from = c("error", "acc", "dist_acc")) |> 
+  ungroup() |>
+  mutate(group_label = paste0("Config: ", config, " | Sources: ", n_src, " | N = ", N)) |>
+  select(group_label, visit, contains("dist_acc"), contains("acc"), contains("error")) |> 
+  gt(groupname_col = "group_label") |> 
+  cols_label(
+    dist_acc_individual = "Individual",
+    dist_acc_shared = "Shared",
+    acc_individual = "Individual",
+    acc_shared = "Shared",
+    error_individual = "Individual",
+    error_shared = "Shared",
+    visit = "Visit"
+  ) |>
+  tab_spanner(columns = contains("dist_acc"), label = "Distance-Weighted Acc.") |> 
+  tab_spanner(columns = starts_with("acc"), label = "Accuracy") |> 
+  tab_spanner(columns = contains("error"), label = "Error (m)")
+

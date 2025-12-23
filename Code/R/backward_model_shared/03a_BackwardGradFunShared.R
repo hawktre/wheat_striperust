@@ -135,7 +135,7 @@ loglik_obs <- function(y, mu_mat, phi, pi_vec) {
        phi = phi, 
        sum = FALSE, 
        log = FALSE)
-  , mc.cores = detectCores()-1))
+  , mc.cores = detectCores()-1, mc.preschedule = FALSE))
   
   # Mixture density for each observation: sum_k pi_k * f_k(y_i)
   mix_density <- lik_mat %*% pi_vec
@@ -166,7 +166,7 @@ e_step <- function(par, y_current, y_prev, wind, dist, group_id, components, pi_
     dist_mat = dist,
     group_id = group_id,
     component = components[,k]
-  ), mc.cores = detectCores() - 1))
+  ), mc.cores = detectCores() - 1, mc.preschedule = FALSE))
 
   #Compute the likelihood of each data point
   lik_mat <- do.call(cbind, mclapply(seq_len(K), function(k) {
@@ -175,7 +175,7 @@ e_step <- function(par, y_current, y_prev, wind, dist, group_id, components, pi_
         phi = phi, 
         sum = F, 
         log = F)
-    }, mc.cores = detectCores()-1))
+    }, mc.cores = detectCores()-1, mc.preschedule = FALSE))
   
 
   # Multiply each row (observation) element-wise by prior[k]
@@ -241,7 +241,7 @@ m_step_obj <- function(par, y_current, y_prev, wind_mat, dist_mat, group_id, p_m
     dist_mat = dist_mat,
     group_id = group_id,
     component = components[,k]
-  ), mc.cores = detectCores()-1))
+  ), mc.cores = detectCores()-1, mc.preschedule = FALSE))
 
   # compute log-likelihood for each observation
   ll_mat <- do.call(cbind, mclapply(seq_len(K), function(k) 
@@ -249,7 +249,7 @@ m_step_obj <- function(par, y_current, y_prev, wind_mat, dist_mat, group_id, p_m
     mu_mat[,k], 
     phi, 
     sum = FALSE, 
-    log = TRUE), mc.cores = detectCores()-1))
+    log = TRUE), mc.cores = detectCores()-1, mc.preschedule = FALSE))
 
   # expected complete-data log-likelihood (Q_k)
   Q_k <- sum(p_mat * ll_mat)
@@ -280,7 +280,7 @@ m_step_grad <- function(par, y_current, y_prev, wind_mat, dist_mat, group_id, p_
      derivative = FALSE,
     group_id = group_id, 
     component = components[,k]
-  ), mc.cores = detectCores() - 1)) 
+  ), mc.cores = detectCores() - 1, mc.preschedule = FALSE)) 
 
   dispersal_grad <- do.call(cbind, mclapply(seq_len(K), function(k) kappa_inner_sum_backward(
     par = par, 
@@ -290,7 +290,7 @@ m_step_grad <- function(par, y_current, y_prev, wind_mat, dist_mat, group_id, p_
      derivative = TRUE,
     group_id = group_id, 
     component = components[,k]
-  ), mc.cores = detectCores() - 1)) 
+  ), mc.cores = detectCores() - 1, mc.preschedule = FALSE)) 
 
   # Recompute mu (n x K)
   mu_mat <- do.call(cbind, mclapply(seq_len(K), function(k) get_mu(
@@ -300,7 +300,7 @@ m_step_grad <- function(par, y_current, y_prev, wind_mat, dist_mat, group_id, p_
     dist_mat = dist_mat,
     group_id = group_id,
     component = components[,k]
-  ), mc.cores = detectCores() - 1))
+  ), mc.cores = detectCores() - 1, mc.preschedule = FALSE))
 
   #Broadcast Y_current and Y_prev to matrices
   y_current <- matrix(y_current, nrow = length(y_current), ncol = K)

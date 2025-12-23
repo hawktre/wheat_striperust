@@ -24,6 +24,7 @@ source(here("Code/R/forward_model/02a_ForwardGradFun.R"))
 
 # Backward Fit ------------------------------------------------------------
 backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, tol = 1e-4) {
+  
   ## Extract needed data
   intensity <- mod_dat$intensity[, blk, trt, vst]
   intensity_prev <- mod_dat$intensity[, blk, trt, as.numeric(vst) - 1]
@@ -53,7 +54,10 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
                   pi_vec = prior)
   
   ## Initial Q and log-likelihood
-  observed_ll[1] <- E$ll_obs
+  if(!is.na(E$ll_obs)){
+    observed_ll[1] <- E$ll_obs
+  }
+
 
   # EM loop
   for (iter in 2:max_em_iter) {
