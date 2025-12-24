@@ -98,8 +98,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
     
     theta_diff <- max(abs(M$theta_new - theta_old))
     observed_ll_diff <- abs(observed_ll[iter] - observed_ll[iter - 1])
-    if (( observed_ll_diff < tol) ||
-        theta_diff < tol) {
+    if (observed_ll_diff < tol || theta_diff < tol) {
       return(data.table(
         config = config, block = blk, treat = trt, visit = as.numeric(vst), n_src = S,
         em_iters = iter, converged = TRUE,

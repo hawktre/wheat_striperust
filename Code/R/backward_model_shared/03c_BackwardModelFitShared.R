@@ -58,7 +58,7 @@ backward_result <- backward_fit(config = combo$config,
                                 inits = combo$theta[[1]],
                                 mod_dat = mod_dat,
                                 tol = 1e-4,
-                                max_iter = 1000)
+                                max_iter = 200)
 end <- Sys.time()
 runtime <- difftime(end, start, units = "mins")
 message("Runtime = ", round(runtime, 2), " minutes")

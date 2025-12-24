@@ -67,11 +67,13 @@ combos_backward$init <- pmap(combos_backward %>% select(-config), function(blk, 
 })
 
 
+combos_backward_t1 <- combos_backward |> filter(trt == 1)
 
 start <- Sys.time()
-backward <- lapply(seq_len(1), function(k) {
+backward <- lapply(seq_len(nrow(combos_backward_t1)), function(k) {
   #Subset the current combination
-  combo <- combos_backward[k,]
+  combo <- combos_backward_t1[k,]
+  cat("Running Config: ", combo$config, " Block: ", combo$blk, " Treat: ", combo$trt, "Visit: ", combo$vst, "\n")
   #Run the fitting
   tmp <- backward_fit(config = combo$config,
   blk = combo$blk,
@@ -79,22 +81,25 @@ backward <- lapply(seq_len(1), function(k) {
   vst = combo$vst,
   inits = combo$init[[1]],
   mod_dat = mod_dat, 
-  max_iter = 2000,
+  max_iter = 100,
   tol = 1e-4)
   #Annotate which initial value of kappa was used
-  tmp <- tmp |> mutate(kappa = combo$kappa)
+  tmp$kappa <- combo$kappa
   return(tmp)
 }) |> rbindlist()
 end <- Sys.time()
 runtime <- difftime(end, start, units = "mins")  # could be "mins", "hours", etc.
 message("Runtime = ", round(runtime, 2), " minutes")
 
-backward_trim <- backward %>% 
+saveRDS(backward, here("DataProcessed/results/backward_model/backward_fits_sensitivity.rds"))
+test <- readRDS(here("DataProcessed/results/backward_model/backward_fits_sensitivity.rds"))
+backward_trim <- test %>% 
   select(config, block, treat, visit, kappa, everything()) %>% 
   group_by(config, block, treat, visit) %>%
   slice_min(Q_final) %>% 
   ungroup() %>% 
   as.data.table()
+
 # 4. Source prediction 
 sources_predicted <- backward_trim %>% 
   select(config, block, treat, visit, n_src, p_mat) %>% 
@@ -104,9 +109,9 @@ sources_predicted <- backward_trim %>%
                     vst = ..4,
                     n_src = ..5,
                     p_mat = ..6,
-
                     mod_dat = mod_dat)) %>% 
   rbindlist()
 
-results <- left_join(backward_trim, sources_predicted, by = c("config", "block", "treat", "visit", "n_src"))
-saveRDS(results, here("DataProcessed/results/backward_model/backward_fits_sensitivity.rds"))
+ results <- left_join(backward_trim, sources_predicted, by = c("config", "block", "treat", "visit", "n_src"))
+ saveRDS(results, here("DataProcessed/results/backward_model/backward_fits_sensitivity.rds"))
+

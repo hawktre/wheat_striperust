@@ -108,9 +108,8 @@ loglik_zibeta <- function(y, mu, phi, sum = TRUE, log = TRUE) {
 # Function to compute Q (expected log-likelihood)
 Q_fun <- function(y, mu_mat, phi, p_mat, pi_vec) {
   K <- ncol(mu_mat)
-  phi <- exp(phi)
   
-  lik_list <-   lapply(seq_len(K), function(k) {
+  lik_list <-  lapply(seq_len(K), function(k) {
       loglik_zibeta(y, mu = mu_mat[, k], phi = phi, sum = F, log = T)
     })
   
@@ -126,7 +125,6 @@ Q_fun <- function(y, mu_mat, phi, p_mat, pi_vec) {
 
 loglik_obs <- function(y, mu_mat, phi, pi_vec) {
   K <- ncol(mu_mat)
-  phi <- exp(phi)
   
   # Compute log-likelihood contributions for each component
   lik_mat <- do.call(cbind, mclapply(seq_len(K), function(k) 
@@ -146,7 +144,7 @@ loglik_obs <- function(y, mu_mat, phi, pi_vec) {
   # Observed-data log-likelihood
   loglik_val <- sum(log(mix_density))
   
-  return(loglik_val)
+  return(-loglik_val)
 }
 
 
@@ -186,13 +184,15 @@ e_step <- function(par, y_current, y_prev, wind, dist, group_id, components, pi_
 
   # Compute obersed ll
   ll_obs <- loglik_obs(y_current, mu_mat, phi, pi_vec)
+  Q <- Q_fun(y_current, mu_mat, phi, p_mat, pi_vec)
   return(list("p_mat" = p_mat,
+  "Q" = Q,
   "ll_obs" = ll_obs))
 }
 
 # M-step (Shared Parameters) ------------------------------------------------------------------
 m_step <- function(theta_old, intensity, intensity_prev, wind, dist, group_id, p_mat, components, max_iter = 1000, tol = 1e-4){
-
+  
   fit <- tryCatch(optim(
           par     = theta_old,
           fn      = m_step_obj,
