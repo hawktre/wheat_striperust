@@ -28,6 +28,7 @@ options(scipen = 6, digits = 4)
 
 library(here)
 library(dplyr)
+library(purrr)
 library(data.table)
 
 ## Read in necessary functions
