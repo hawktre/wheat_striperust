@@ -73,8 +73,8 @@ combos_backward_t1 <- combos_backward |>
 # Fit the model -----------------------------------------------------------
 
 # Get array task ID (which row to process)
-#task_id <- as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID"))
-task_id <- 1
+task_id <- as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID"))
+
 if (is.na(task_id)) {
   stop("SLURM_ARRAY_TASK_ID not set. This script must be run as a SLURM array job.")
 }
