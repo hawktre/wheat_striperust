@@ -27,7 +27,7 @@ options(scipen = 6, digits = 4)
 ## load up the packages we will need:  (uncomment as required)
 
 library(here)
-library(tidyverse)
+library(dplyr)
 library(data.table)
 
 ## Read in necessary functions
