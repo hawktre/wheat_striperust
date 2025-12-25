@@ -151,7 +151,7 @@ e_step <- function(y, mu_mat, phi, prior){
   phi <- exp(phi)
   K <- ncol(mu_mat)
 
-  lik_list <-   lapply(seq_len(K), function(k) {
+  lik_list <-  lapply(seq_len(K), function(k) {
       loglik_zibeta(y, mu = mu_mat[, k], phi = phi[k], sum = F, log = F)
     })
   

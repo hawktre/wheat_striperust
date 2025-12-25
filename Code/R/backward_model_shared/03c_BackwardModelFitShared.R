@@ -37,6 +37,7 @@ combos_backward <- left_join(combos_backward, forward %>% select(block, treat, v
                              by = c("blk"="block", "trt"="treat", "vst"="visit")) |> 
   filter(!(config == "64" & trt == "4"))
 
+
 # Get array task ID (which row to process)
 task_id <- as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID"))
 

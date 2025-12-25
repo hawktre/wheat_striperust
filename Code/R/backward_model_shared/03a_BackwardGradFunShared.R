@@ -17,7 +17,7 @@ inv_logit <- function(x) 1 / (1 + exp(-x))
 
 # Dispersal function ------------------------------------------------------
 kappa_inner_sum_backward <- function(par, y_prev, wind_mat, dist_mat, d0 = 0.01, derivative = FALSE, group_id, component) {
-
+  
   # Compute constant terms
   dist_shifted <- dist_mat + d0
   log_dist <- log(dist_shifted)
@@ -105,89 +105,44 @@ loglik_zibeta <- function(y, mu, phi, sum = TRUE, log = TRUE) {
   return(out)
 }
 
-# Function to compute Q (expected log-likelihood)
-Q_fun <- function(y, mu_mat, phi, p_mat, pi_vec) {
-  K <- ncol(mu_mat)
-  
-  lik_list <-  lapply(seq_len(K), function(k) {
-      loglik_zibeta(y, mu = mu_mat[, k], phi = phi, sum = F, log = T)
-    })
-  
-  lik_mat <- do.call(cbind, lik_list)
-
-  inner_sum <- t(t(lik_mat) + log(pi_vec))
-
-  #compute Q-val
-  Q_val <- sum(p_mat * inner_sum)
-
-  return(-Q_val)
-}
-
-loglik_obs <- function(y, mu_mat, phi, pi_vec) {
-  K <- ncol(mu_mat)
-  
-  # Compute log-likelihood contributions for each component
-  lik_mat <- do.call(cbind, mclapply(seq_len(K), function(k) 
-    loglik_zibeta(y, 
-      mu = mu_mat[, k],
-       phi = phi, 
-       sum = FALSE, 
-       log = FALSE)
-  , mc.cores = detectCores()-1, mc.preschedule = FALSE))
-  
-  # Mixture density for each observation: sum_k pi_k * f_k(y_i)
-  mix_density <- lik_mat %*% pi_vec
-  
-  # Avoid log(0)
-  mix_density <- pmax(mix_density, .Machine$double.eps)
-  
-  # Observed-data log-likelihood
-  loglik_val <- sum(log(mix_density))
-  
-  return(-loglik_val)
-}
-
-
 
 # E-step ------------------------------------------------------------------
 e_step <- function(par, y_current, y_prev, wind, dist, group_id, components, pi_vec){
-  
+
   #Set up variables
   phi <- exp(par[['phi']])
   K <- ncol(components)
 
-  #Compute mu_mat using the current parameters
-  mu_mat <- do.call(cbind, mclapply(seq_len(K), function(k) get_mu(
-    par = par,
-    y_prev = y_prev,
-    wind_mat = wind,
-    dist_mat = dist,
-    group_id = group_id,
-    component = components[,k]
-  ), mc.cores = detectCores() - 1, mc.preschedule = FALSE))
-
-  #Compute the likelihood of each data point
+  #Compute lik_mat using the current parameters
   lik_mat <- do.call(cbind, mclapply(seq_len(K), function(k) {
-      loglik_zibeta(y_current, 
-        mu = mu_mat[, k], 
-        phi = phi, 
-        sum = F, 
-        log = F)
-    }, mc.cores = detectCores()-1, mc.preschedule = FALSE))
+    mu <- get_mu(par = par,
+      y_prev = y_prev,
+      wind_mat = wind,
+      dist_mat = dist,
+      group_id = group_id,
+      component = components[,k])
+  
+    lik <- loglik_zibeta(y_current,
+      mu = mu, 
+      phi = phi, 
+      sum = F, 
+      log = F)
+    
+    return(lik)
+  }, mc.cores = detectCores() - 1, mc.preschedule = FALSE))
   
 
-  # Multiply each row (observation) element-wise by prior[k]
+  # Multiply each row (observation) element-wise by prior[k] and get weighted posterior probabilities
   wl_mat <- t(t(lik_mat) * pi_vec)
-
-  # Posterior probabilities for each observation and component
   p_mat <- wl_mat / rowSums(wl_mat)
 
-  # Compute obersed ll
-  ll_obs <- loglik_obs(y_current, mu_mat, phi, pi_vec)
-  Q <- Q_fun(y_current, mu_mat, phi, p_mat, pi_vec)
+  # Compute obersed-data ll
+  mix_density <- lik_mat %*% pi_vec
+  mix_density <- pmax(mix_density, .Machine$double.eps)
+  ll_obs <- sum(log(mix_density))
+
   return(list("p_mat" = p_mat,
-  "Q" = Q,
-  "ll_obs" = ll_obs))
+  "ll_obs" = -ll_obs))
 }
 
 # M-step (Shared Parameters) ------------------------------------------------------------------
@@ -234,27 +189,28 @@ m_step_obj <- function(par, y_current, y_prev, wind_mat, dist_mat, group_id, p_m
   phi <- exp(par[["phi"]])
 
   # recompute mu at current parameters
-  mu_mat <- do.call(cbind, mclapply(seq_len(K), function(k) get_mu(
-    par = par,
-    y_prev = y_prev,
-    wind_mat = wind_mat,
-    dist_mat = dist_mat,
-    group_id = group_id,
-    component = components[,k]
-  ), mc.cores = detectCores()-1, mc.preschedule = FALSE))
-
-  # compute log-likelihood for each observation
-  ll_mat <- do.call(cbind, mclapply(seq_len(K), function(k) 
-  loglik_zibeta(y_current, 
-    mu_mat[,k], 
-    phi, 
-    sum = FALSE, 
-    log = TRUE), mc.cores = detectCores()-1, mc.preschedule = FALSE))
+  #Compute lik_mat using the current parameters
+  ll_vec <- do.call(cbind, mclapply(seq_len(K), function(k) {
+    mu <- get_mu(par = par,
+      y_prev = y_prev,
+      wind_mat = wind_mat,
+      dist_mat = dist_mat,
+      group_id = group_id,
+      component = components[,k])
+  
+    lik <- loglik_zibeta(y_current,
+      mu = mu, 
+      phi = phi, 
+      sum = T, 
+      log = T)
+    
+    return(lik)
+  }, mc.cores = detectCores() - 1, mc.preschedule = FALSE))
 
   # expected complete-data log-likelihood (Q_k)
-  Q_k <- sum(p_mat * ll_mat)
+  ll <- sum(ll_vec)
 
-  return(-Q_k)
+  return(-ll)
 }
 
 
