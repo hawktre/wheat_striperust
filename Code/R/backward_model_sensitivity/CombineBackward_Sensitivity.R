@@ -7,6 +7,8 @@
 ## ---------------------------
 
 library(here)
+library(purrr)
+library(dplyr)
 library(data.table)
 
 
@@ -16,7 +18,7 @@ result_files <- list.files(array_dir, pattern = "^backward_.*\\.rds$", full.name
 
 message("Found ", length(result_files), " result files")
 
-backward <- map(result_files, readRDS) %>% rbindlist()
+backward <- rbindlist(map(result_files, readRDS))
 
 saveRDS(backward, here("DataProcessed/results/backward_model/backward_fits_sensitivity.rds"))
 
