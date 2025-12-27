@@ -11,9 +11,6 @@
 ##
 ## ---------------------------
 
-# user_lib <- file.path(Sys.getenv("HOME"), "R_libs/4.4")
-# .libPaths(user_lib)
-
 library(here)
 library(data.table)
 library(dplyr)
@@ -50,10 +47,9 @@ if (is.na(ncores) || ncores <= 0) {
   ncores <- parallel::detectCores(logical = FALSE)
 }
 ncores <- min(nsim, ncores)
-
 cat("Using", ncores, "cores for simulations\n")
 
-sim_list <- mclapply(1:nsim, function(i) {
+sim_list <- mclapply(seq_len(nsim), function(i) {
   t0 <- Sys.time()
   cur.sim <- (task_id * nsim) + i
   result <- single_sim(cur.sim, mod_dat, forward_fits, kappa_try = kappa_try, output_dir = here("DataProcessed/results/simulation/errors"))

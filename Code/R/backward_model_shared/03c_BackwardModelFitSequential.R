@@ -19,7 +19,7 @@ library(parallel)
 library(data.table)
 
 ## Read in necessary functions
-source(here("Code/R/backward_model_shared/03b_BackwardModelFunShared.R"))
+source(here("Code/R/backward_model_shared/03a_BackwardGradFunShared_vectorized.R"))
 
 ## Read in forward fits
 forward <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))

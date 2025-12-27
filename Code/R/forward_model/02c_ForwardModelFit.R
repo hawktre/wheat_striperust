@@ -33,7 +33,7 @@ library(MASS)
 
 # Read in the data --------------------------------------------------------
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
-source(here("Code/02b_ForwardModelFun.R"))
+source(here("Code/R/forward_model/02b_ForwardModelFun.R"))
 
 
 # Set up indices ----------------------------------------------------------

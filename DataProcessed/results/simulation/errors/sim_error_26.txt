@@ -1,0 +1,7 @@
+Simulation failed:
+sim_id: 26
+message: incorrect number of dimensions
+class: simpleError, error, condition
+call: intensity_sim[, , "A", "2", "2"]
+
+Dumped frames to:  /Users/trentvanhawkins/Library/Mobile Documents/com~apple~CloudDocs/Documents/School/OSU/dissertation/wheat_striperust/DataProcessed/results/simulation/errors/sim_dump_26 .rda

@@ -32,8 +32,8 @@ library(here)
 
 # Read in the data and simulations ----------------------------------------
 forward <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))
-backward <- readRDS(here("DataProcessed/results/backward_model/backwards_fits.rds"))
-sims <- readRDS(here("DataProcessed/results/simulation/sims_test.rds"))
+backward <- readRDS(here("DataProcessed/results/backward_model/backward_fits_shared.rds"))
+sims <- readRDS(here("DataProcessed/results/simulation/batch_results/simulation_batch3.rds"))
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
 
 # Forward model parameters ------------------------------------------------

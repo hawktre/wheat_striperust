@@ -29,7 +29,7 @@ options(scipen = 6, digits = 4)
 # Function to simulate the data -------------------------------------------
 disease_sim <- function(pars, mu, alpha) {
 
-  phi <- pars[["phi"]]
+  phi <- exp(pars[["phi"]])
   
   # Convert to shape parameters
   a <- mu * phi
@@ -54,7 +54,6 @@ sim_dat <- map2_dbl(a, b, ~{
 
 # Wrapper Function for the simulation -------------------------------------
 single_sim <- function(sim_id, dat, forward_mod, kappa_try, output_dir = here("DataProcessed/results/simulation")) {
-  
   base_seed <- 404
   set.seed(base_seed + sim_id)
   tryCatch({
@@ -63,6 +62,7 @@ single_sim <- function(sim_id, dat, forward_mod, kappa_try, output_dir = here("D
     treats <- dimnames(dat$intensity)[["treat"]]
     visits <- dimnames(dat$intensity)[["visit"]]
     configs <- dimnames(dat$groups)[["config"]]
+    
     
     # 1. Simulate new intensity values
     intensity_sim <- dat$intensity
@@ -79,9 +79,11 @@ single_sim <- function(sim_id, dat, forward_mod, kappa_try, output_dir = here("D
     }
     dat$intensity <- intensity_sim
     
+    
     # 3. Fit Forward Model
     combos_forward <- expand.grid(block = blocks, treat = treats, visit = visits[-1], stringsAsFactors = FALSE)
-    forward <- pmap(combos_forward, ~forward_fit(..1, ..2, ..3, dat, kappa_try)) |> rbindlist() |> mutate()
+    forward <- pmap(combos_forward, ~forward_fit(..1, ..2, ..3, dat, kappa_try)) |> rbindlist()
+    
     
     # 2. Fit backward model
     combos_backward <- expand.grid(config = configs, block = blocks, treat = treats, visit = visits[-1], stringsAsFactors = FALSE) |> 

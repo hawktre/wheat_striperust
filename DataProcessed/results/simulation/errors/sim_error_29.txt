@@ -1,0 +1,9 @@
+Simulation failed:
+sim_id: 29
+message: [1m[22m[36mℹ[39m In index: 36.
+[1mCaused by error in `which(p_bar == max(p_bar, na.rm = T), arr.ind = T)[[2]]`:[22m
+[33m![39m subscript out of bounds
+class: purrr_error_indexed, rlang_error, error, condition
+call: pmap(select(backward, config, block, treat, visit, n_src, p_mat),     ~source_pred(config = ..1, blk = ..2, trt = ..3, vst = ..4,         n_src = ..5, p_mat = ..6, mod_dat = mod_dat))
+
+Dumped frames to:  /Users/trentvanhawkins/Library/Mobile Documents/com~apple~CloudDocs/Documents/School/OSU/dissertation/wheat_striperust/DataProcessed/results/simulation/errors/sim_dump_29 .rda
