@@ -47,7 +47,7 @@ kappa_inner_sum <- function(y_prev, wind_matrix, dist_matrix, d0, kappa, derivat
 # --- Initialization ---
 
 initialize_theta <- function(y, y_prev, wind_mat, dist_mat, d_0, kappa) {
-
+  
   #Subset non-zero observations
   non_zero <- which(y > 0)
   

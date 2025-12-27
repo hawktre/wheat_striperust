@@ -19,15 +19,14 @@ library(data.table)
 library(dplyr)
 library(purrr)
 library(parallel)  # Use base parallel package
-source(here("Code/02b_ForwardModelFun.R"))
-source(here("Code/03b_BackwardModelFun.R"))
-source(here("Code/04a_SimFunc.R"))
+source(here("Code/R/forward_model/02b_ForwardModelFun.R"))
+source(here("Code/R/backward_model_shared/03b_BackwardModelFunShared.R"))
+source(here("Code/R/simulation/04a_SimFunc.R"))
 
 # Read in data
 forward_fits <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
-
-
+kappa_try <- c(0.5, 0.8, 1.2, 1.6, 2.0, 2.5, 3.0, 4.0)
 
 # Take args from command line
 args <- commandArgs(trailingOnly = TRUE)
@@ -39,12 +38,16 @@ if (length(args) >= 1) {
   nsim <- as.numeric(args[1])
 }
 
+# Get array task ID (which row to process)
+task_id <- as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID"))
+
 cat("Running", nsim, "simulations\n")
 
 # Use SLURM_CPUS_PER_TASK if available
 ncores <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK"))
+
 if (is.na(ncores) || ncores <= 0) {
-  ncores <- parallel::detectCores(logical = FALSE) - 1
+  ncores <- parallel::detectCores(logical = FALSE)
 }
 ncores <- min(nsim, ncores)
 
@@ -53,20 +56,24 @@ cat("Using", ncores, "cores for simulations\n")
 sim_list <- mclapply(1:nsim, function(i) {
   t0 <- Sys.time()
 
-  result <- single_sim(i, mod_dat, forward_fits, kappa_try = seq(0.25, 2.5, 0.25), output_dir = here("DataProcessed/results/simulation/errors"))
+  result <- single_sim((task_id * nsim) + i, mod_dat, forward_fits, kappa_try = kappa_try, output_dir = here("DataProcessed/results/simulation/errors"))
 
   t1 <- Sys.time()
   elapsed <- as.numeric(difftime(t1, t0, units = "mins"))
 
   log_msg <- sprintf("Sim %05d done in %.1f mins at %s\n", i, elapsed, format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
-  cat(log_msg, file = file.path(here("DataProcessed/results/simulation"), "sim_progress.log"), append = TRUE)
+  cat(log_msg, file = file.path(here("DataProcessed/results/simulation/logs"), paste0("simulation_progress_",task_id,".log"), append = TRUE))
 
   result
-}, mc.cores = ncores)
+}, mc.cores = ncores, mc.preschedule = FALSE)
 
 
 # Combine results into a data.frame
 sims <- rbindlist(sim_list)
 
-# Save
-saveRDS(sims, here("DataProcessed/results/simulation/sims.rds"))
+# Save individual result
+output_dir <- here("DataProcessed/results/simulation/batch_results")
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+saveRDS(backward_result, file.path(output_dir, paste0("simulation_batch", task_id,".rds")))
+
+message("Task ", task_id, " completed successfully")

@@ -24,7 +24,7 @@ options(scipen = 6, digits = 4)
 
 ## ---------------------------
 library(here)
-source(here("Code/02a_ForwardGradFun.R"))
+source(here("Code/R/forward_model/02a_ForwardGradFun.R"))
 
 # Forward Fits -------------------------------------------------------------
 forward_fit <- function(blk, trt, vst, mod_dat, kappa_try) {

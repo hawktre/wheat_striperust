@@ -19,7 +19,7 @@ library(parallel)
 library(data.table)
 library(RcppHungarian)
 ## Read in the needed functions
-source(here("Code/R/backward_model_shared/03a_BackwardGradFunShared.R"))
+source(here("Code/R/backward_model_shared/03a_BackwardGradFunShared_vectorized.R"))
 source(here("Code/R/forward_model/02a_ForwardGradFun.R"))
 
 # Backward Fit ------------------------------------------------------------
