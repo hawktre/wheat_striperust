@@ -32,7 +32,7 @@ kappa_try <- c(0.5, 0.8, 1.2, 1.6, 2.0, 2.5, 3.0, 4.0)
 args <- commandArgs(trailingOnly = TRUE)
 
 # Set default value of simulations
-nsim <- 100
+nsim <- 20
 # Override with argument if provided
 if (length(args) >= 1) {
   nsim <- as.numeric(args[1])
