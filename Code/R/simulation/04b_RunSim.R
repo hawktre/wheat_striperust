@@ -55,14 +55,14 @@ cat("Using", ncores, "cores for simulations\n")
 
 sim_list <- mclapply(1:nsim, function(i) {
   t0 <- Sys.time()
-
-  result <- single_sim((task_id * nsim) + i, mod_dat, forward_fits, kappa_try = kappa_try, output_dir = here("DataProcessed/results/simulation/errors"))
+  cur.sim <- (task_id * nsim) + i
+  result <- single_sim(cur.sim, mod_dat, forward_fits, kappa_try = kappa_try, output_dir = here("DataProcessed/results/simulation/errors"))
 
   t1 <- Sys.time()
   elapsed <- as.numeric(difftime(t1, t0, units = "mins"))
 
-  log_msg <- sprintf("Sim %05d done in %.1f mins at %s\n", i, elapsed, format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
-  cat(log_msg, file = file.path(here("DataProcessed/results/simulation/logs"), paste0("simulation_progress_",task_id,".log"), append = TRUE))
+  log_msg <- sprintf("Sim %05d done in %.1f mins at %s\n", cur.sim, elapsed, format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
+  cat(log_msg, file = file.path(here("DataProcessed/results/simulation/logs"), paste0("sim_progress.log")), append = TRUE)
 
   result
 }, mc.cores = ncores, mc.preschedule = FALSE)
@@ -74,6 +74,6 @@ sims <- rbindlist(sim_list)
 # Save individual result
 output_dir <- here("DataProcessed/results/simulation/batch_results")
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
-saveRDS(backward_result, file.path(output_dir, paste0("simulation_batch", task_id,".rds")))
+saveRDS(sims, file.path(output_dir, paste0("simulation_batch", task_id,".rds")))
 
 message("Task ", task_id, " completed successfully")
