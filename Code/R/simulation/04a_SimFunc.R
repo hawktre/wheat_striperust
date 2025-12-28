@@ -54,6 +54,7 @@ sim_dat <- map2_dbl(a, b, ~{
 
 # Wrapper Function for the simulation -------------------------------------
 single_sim <- function(sim_id, dat, forward_mod, kappa_try, output_dir = here("DataProcessed/results/simulation")) {
+  
   base_seed <- 404
   set.seed(base_seed + sim_id)
   tryCatch({
@@ -65,7 +66,7 @@ single_sim <- function(sim_id, dat, forward_mod, kappa_try, output_dir = here("D
     
     
     # 1. Simulate new intensity values
-    intensity_sim <- dat$intensity
+    
     for (blk in blocks) {
       for (trt in treats) {
         for (vst in visits[-1]) {
@@ -73,12 +74,10 @@ single_sim <- function(sim_id, dat, forward_mod, kappa_try, output_dir = here("D
           pars <- fit[["theta"]][[1]]
           alpha <- fit[["alpha"]]
           fitted <- fit[["fitted"]][[1]]
-          intensity_sim[, blk, trt, vst] <- disease_sim(pars, fitted, alpha)
+          dat$intensity[, blk, trt, vst] <- disease_sim(pars, fitted, alpha)
         }
       }
     }
-    dat$intensity <- intensity_sim
-    
     
     # 3. Fit Forward Model
     combos_forward <- expand.grid(block = blocks, treat = treats, visit = visits[-1], stringsAsFactors = FALSE)
@@ -101,7 +100,7 @@ single_sim <- function(sim_id, dat, forward_mod, kappa_try, output_dir = here("D
         max_iter = 200)}) |> rbindlist()
 
     # 4. Source prediction
-    sources_predicted <- backward|> 
+    sources_predicted <- backward|> filter(converged == T) |> 
   select(config, block, treat, visit, n_src, p_mat) |> 
   pmap(~source_pred(config = ..1,
                     blk = ..2,
@@ -112,7 +111,7 @@ single_sim <- function(sim_id, dat, forward_mod, kappa_try, output_dir = here("D
                     mod_dat = mod_dat)) |> 
   rbindlist()
     
-    results_merge <- left_join(backward, forward |> mutate(visit = as.numeric(visit)), by = c("block", "treat", "visit"), suffix = c(".backward", ".forward")) %>% 
+    results_merge <- left_join(backward |> select(-p_mat), forward |> mutate(visit = as.numeric(visit)), by = c("block", "treat", "visit"), suffix = c(".backward", ".forward")) %>% 
       left_join(sources_predicted, by = c("config", "block", "treat", "visit")) |> 
       mutate(sim = sim_id) |> 
       dplyr::select(sim, everything())

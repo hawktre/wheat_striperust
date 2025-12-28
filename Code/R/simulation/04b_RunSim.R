@@ -17,7 +17,7 @@ library(dplyr)
 library(purrr)
 library(parallel)  # Use base parallel package
 source(here("Code/R/forward_model/02b_ForwardModelFun.R"))
-source(here("Code/R/backward_model_shared/03b_BackwardModelFunShared.R"))
+source(here("Code/R/backward_model_shared/03b_BackwardModelFunSimulation.R"))
 source(here("Code/R/simulation/04a_SimFunc.R"))
 
 # Read in data

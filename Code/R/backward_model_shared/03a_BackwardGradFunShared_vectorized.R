@@ -187,7 +187,6 @@ m_step <- function(theta_old, intensity, intensity_prev, wind, dist, group_id, p
     components = components
   ),
   error = function(e) {
-    message(sprintf("optim() error: %s", conditionMessage(e)))
     NULL
   }
   )
