@@ -32,4 +32,4 @@ ARRAY_END=$((NBATCH - 1))
 
 echo "Submitting array job with $NBATCH tasks (0-$ARRAY_END)"
 
-sbatch --array=0-${ARRAY_END}%50 Code/shell/utils/run_simulation.sh
+sbatch --array=0-${ARRAY_END}%20 Code/shell/utils/run_simulation.sh
