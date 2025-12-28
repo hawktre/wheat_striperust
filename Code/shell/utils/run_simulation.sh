@@ -2,7 +2,7 @@
 #SBATCH -J StripeSim                # Job name
 #SBATCH -o DataProcessed/results/simulation/logs/simulation_%A_%a.out     
 #SBATCH -e DataProcessed/results/simulation/logs/simulation_%A_%a.err     
-#SBATCH -c 20                         # CPU cores per task
+#SBATCH -c 10                         # CPU cores per task
 #SBATCH --mem=20G                     # Memory per task
 #SBATCH --time=1-00:00:00             # Walltime per task
 
