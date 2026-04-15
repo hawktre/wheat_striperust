@@ -1,6 +1,6 @@
 ## ---------------------------
 ##
-## Script name: 05b_EMmod.R
+## Script name: 03a_BackwardGradFunShared_Vectorized.R
 ##
 ## Purpose of script: Fit em mod to get source probabilities
 ##
@@ -33,33 +33,39 @@ create_component_indicator <- function(group_id, components) {
 
 # Vectorized Dispersal function -------------------------------------------
 kappa_inner_sum_backward_vectorized <- function(par, y_prev, wind_mat, dist_mat, 
-                                                 component_indicator, d0 = 0.01, 
-                                                 derivative = FALSE) {
-  # Compute distance kernel (same for all components)
+                                                component_indicator, d0 = 0.01, 
+                                                derivative = FALSE, return_both = FALSE) {
+  # Compute distance kernel once
   dist_shifted <- dist_mat + d0
   kappa <- par[['kappa']]
   dist_kernel <- dist_shifted^(-kappa)
   
-  if (derivative) {
-    dist_kernel <- -dist_kernel * log(dist_shifted)
+  # Wind-distance matrix
+  wind_dist <- wind_mat * dist_kernel
+  
+  # Vectorized computation
+  y_prev_weighted <- y_prev * component_indicator
+  dispersal <- wind_dist %*% y_prev_weighted
+  
+  if (derivative || return_both) {
+    log_dist <- log(dist_shifted)
+    dist_kernel_grad <- -dist_kernel * log_dist
+    wind_dist_grad <- wind_mat * dist_kernel_grad
+    dispersal_grad <- wind_dist_grad %*% y_prev_weighted
+    
+    if (return_both) {
+      return(list(value = dispersal, gradient = dispersal_grad))
+    } else {
+      return(dispersal_grad)
+    }
   }
   
-  # Compute wind-distance matrix once
-  wind_dist <- wind_mat * dist_kernel  # n x n
-  
-  # Vectorized: weight y_prev by component membership
-  # y_prev_weighted is n x K
-  y_prev_weighted <- y_prev * component_indicator
-  
-  # Single matrix multiplication gives all K dispersals at once
-  dispersal_all <- wind_dist %*% y_prev_weighted  # n x K
-  
-  return(dispersal_all)
+  return(dispersal)
 }
 
 # Vectorized Mean function ------------------------------------------------
 get_mu_vectorized <- function(par, y_prev, wind_mat, dist_mat, component_indicator, d0 = 0.01) {
-  # Compute dispersal for all components at once (n x K matrix)
+  # Use the pre-computed component indicator
   dispersal_all <- kappa_inner_sum_backward_vectorized(
     par = par,
     y_prev = y_prev,
@@ -70,13 +76,8 @@ get_mu_vectorized <- function(par, y_prev, wind_mat, dist_mat, component_indicat
     derivative = FALSE
   )
   
-  # Auto-infection term (broadcast to n x K)
   auto <- y_prev * (1 - y_prev)
-  
-  # Linear predictor for all components (n x K)
   eta <- par["beta"] + par["delta"] * auto + par["gamma"] * dispersal_all
-  
-  # Inverse logit, clipped
   mu_all <- 1 / (1 + exp(-eta))
   pmin(pmax(mu_all, 1e-6), 1 - 1e-6)
 }
@@ -136,16 +137,17 @@ loglik_zibeta_vectorized <- function(y, mu_mat, phi, sum = TRUE, log = TRUE) {
 }
 
 # E-step (VECTORIZED) -----------------------------------------------------
-e_step <- function(par, y_current, y_prev, wind, dist, group_id, components, pi_vec){
+e_step <- function(par, y_current, y_prev, wind, dist, group_id, components, pi_vec, component_indicator = NULL){
   
-  # Set up variables
   phi <- exp(par[['phi']])
   K <- ncol(components)
   
-  # Create component indicator ONCE
-  component_indicator <- create_component_indicator(group_id, components)
+  # Use provided component indicator or create if not provided
+  if (is.null(component_indicator)) {
+    component_indicator <- create_component_indicator(group_id, components)
+  }
   
-  # Get mu for ALL components at once (n x K matrix)
+  # Rest of function unchanged, just pass component_indicator
   mu_all <- get_mu_vectorized(
     par = par,
     y_prev = y_prev,
@@ -170,7 +172,7 @@ e_step <- function(par, y_current, y_prev, wind, dist, group_id, components, pi_
 }
 
 # M-step (Shared Parameters) ----------------------------------------------
-m_step <- function(theta_old, intensity, intensity_prev, wind, dist, group_id, p_mat, components, max_iter = 1000, tol = 1e-4){
+m_step <- function(theta_old, intensity, intensity_prev, wind, dist, group_id, p_mat, components, component_indicator = NULL, max_iter = 1000, tol = 1e-4){
   
   fit <- tryCatch(optim(
     par     = theta_old,
@@ -184,7 +186,8 @@ m_step <- function(theta_old, intensity, intensity_prev, wind, dist, group_id, p
     dist_mat  = dist,
     group_id  = group_id,
     p_mat = p_mat,
-    components = components
+    components = components,
+    component_indicator = component_indicator
   ),
   error = function(e) {
     NULL
@@ -203,15 +206,17 @@ m_step <- function(theta_old, intensity, intensity_prev, wind, dist, group_id, p
 }
 
 # Function to compute Q for M-step optimization (VECTORIZED) -------------
-m_step_obj <- function(par, y_current, y_prev, wind_mat, dist_mat, group_id, p_mat, components) {
+m_step_obj <- function(par, y_current, y_prev, wind_mat, dist_mat, group_id, p_mat, components, component_indicator = NULL) {
   
   # Specify number of components
   K <- ncol(p_mat)
   # extract phi (still on log scale)
   phi <- exp(par[["phi"]])
   
-  # Create component indicator ONCE
-  component_indicator <- create_component_indicator(group_id, components)
+  # Use provided component indicator or create if not provided
+  if (is.null(component_indicator)) {
+    component_indicator <- create_component_indicator(group_id, components)
+  }
   
   # Recompute mu at current parameters - ALL components at once
   mu_all <- get_mu_vectorized(
@@ -232,7 +237,7 @@ m_step_obj <- function(par, y_current, y_prev, wind_mat, dist_mat, group_id, p_m
 }
 
 # M-step gradient (VECTORIZED) --------------------------------------------
-m_step_grad <- function(par, y_current, y_prev, wind_mat, dist_mat, group_id, p_mat, components) {
+m_step_grad <- function(par, y_current, y_prev, wind_mat, dist_mat, group_id, p_mat, components, component_indicator = NULL) {
   beta  <- par["beta"]
   delta <- par["delta"]
   gamma <- par["gamma"]
@@ -243,28 +248,23 @@ m_step_grad <- function(par, y_current, y_prev, wind_mat, dist_mat, group_id, p_
   K <- ncol(p_mat)
   non_zero <- which(y_current > 0)
   
-  # Create component indicator ONCE
-  component_indicator <- create_component_indicator(group_id, components)
+  # Use provided component indicator or create if not provided
+  if (is.null(component_indicator)) {
+    component_indicator <- create_component_indicator(group_id, components)
+  }
   
-  # Compute ALL dispersals at once (n x K)
-  dispersal <- kappa_inner_sum_backward_vectorized(
+  # Get both dispersal value and gradient in one call
+  dispersal_combined <- kappa_inner_sum_backward_vectorized(
     par = par, 
     y_prev = y_prev,
     wind_mat = wind_mat, 
     dist_mat = dist_mat,
     component_indicator = component_indicator,
-    derivative = FALSE
+    return_both = TRUE
   )
   
-  # Compute ALL dispersal gradients at once (n x K)
-  dispersal_grad <- kappa_inner_sum_backward_vectorized(
-    par = par, 
-    y_prev = y_prev,
-    wind_mat = wind_mat, 
-    dist_mat = dist_mat,
-    component_indicator = component_indicator,
-    derivative = TRUE
-  )
+  dispersal <- dispersal_combined$value
+  dispersal_grad <- dispersal_combined$gradient
   
   # Compute ALL mus at once (n x K)
   mu_mat <- get_mu_vectorized(

@@ -24,7 +24,7 @@ source(here("Code/R/forward_model/02a_ForwardGradFun.R"))
 
 # Backward Fit ------------------------------------------------------------
 backward_fit <- function(config, blk, trt, vst, n_src, mod_dat, inits, max_iter = 100, tol = 1e-4) {
-  
+
   ## Extract needed data
   intensity <- mod_dat$intensity[, blk, trt, vst]
   intensity_prev <- mod_dat$intensity[, blk, trt, as.numeric(vst) - 1]
@@ -38,6 +38,9 @@ backward_fit <- function(config, blk, trt, vst, n_src, mod_dat, inits, max_iter 
   K <- ncol(combos)
   prior <- rep(1 / K, K)
   
+  # Pre-compute component indicator matrix ONCE
+  component_indicator <- create_component_indicator(group_id, combos)
+  
   ## Tracking
   max_em_iter <- max_iter
   observed_ll <- numeric(max_em_iter)
@@ -45,42 +48,44 @@ backward_fit <- function(config, blk, trt, vst, n_src, mod_dat, inits, max_iter 
   # Initial E-step
   theta_old <- inits
   E <- e_step(par = theta_old, 
-                    y_current = intensity, 
-                    y_prev = intensity_prev, 
-                    wind = wind, 
-                    dist = dist, 
-                    group_id = group_id, 
-                    components = combos,
-                  pi_vec = prior)
+              y_current = intensity, 
+              y_prev = intensity_prev, 
+              wind = wind, 
+              dist = dist, 
+              group_id = group_id, 
+              components = combos,
+              pi_vec = prior,
+              component_indicator = component_indicator)
   
   ## Initial Q and log-likelihood
   if(!is.na(E$ll_obs)){
     observed_ll[1] <- E$ll_obs
   }
-
-
+  
   # EM loop
   for (iter in 2:max_em_iter) {
-
+    cat("EM Step:", iter, "\n")
     # M-step
     M <- m_step(theta_old = theta_old, 
-                    intensity = intensity,
-                    intensity_prev = intensity_prev, 
-                    wind = wind, 
-                    dist = dist, 
-                    group_id = group_id, 
-                    p_mat = E$p_mat, 
-                    components = combos)
+                intensity = intensity,
+                intensity_prev = intensity_prev, 
+                wind = wind, 
+                dist = dist, 
+                group_id = group_id, 
+                p_mat = E$p_mat, 
+                components = combos,
+                component_indicator = component_indicator)
     
     ## E-step: recompute responsibilities
     E <- e_step(par = M$theta_new, 
-                    y_current = intensity, 
-                    y_prev = intensity_prev, 
-                    wind = wind, 
-                    dist = dist, 
-                    group_id = group_id, 
-                    components = combos,
-                  pi_vec = M$pi)
+                y_current = intensity, 
+                y_prev = intensity_prev, 
+                wind = wind, 
+                dist = dist, 
+                group_id = group_id, 
+                components = combos,
+                pi_vec = M$pi,
+                component_indicator = component_indicator)
     
     ## Compute observed log-likelihood and Q
     observed_ll[iter] <- E$ll_obs
