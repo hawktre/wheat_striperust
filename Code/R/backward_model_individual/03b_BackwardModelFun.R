@@ -23,7 +23,7 @@ source(here("Code/R/backward_model_individual/03a_BackwardGradFun.R"))
 source(here("Code/R/forward_model/02a_ForwardGradFun.R"))
 
 # Backward Fit ------------------------------------------------------------
-backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, tol = 1e-4) {
+backward_fit <- function(config, blk, trt, vst, n_src, mod_dat, inits, max_iter = 100, tol = 1e-4) {
   
   ## Extract needed data
   intensity <- mod_dat$intensity[, blk, trt, vst]
@@ -33,7 +33,6 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
   group_id <- mod_dat$groups[, config]
   
   # Initializations
-  n_src <- length(unique(na.omit(mod_dat$truth[blk, trt,,config])))
   S <- n_src
   combos <- combn(sort(unique(group_id)), S)
   K <- ncol(combos)

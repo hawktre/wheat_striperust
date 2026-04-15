@@ -222,12 +222,12 @@ ggwindrose(speed = wind_filter$speed,
            speed_cuts = c(2, 3, 5, max(wind_filter$speed)),
            n_directions = 16,
            facet = factor(wind_filter$period),
-           n_col = 4)+
+           n_col = 2)+
   labs(fill = "Wind Speed (m/s)")+
   theme(legend.position = "bottom") + 
   scale_fill_manual(values = wind_colors)
 
-ggsave("WindSummary_Stratified.png", path = here("Reports/CAS_poster/"), width = 12, height = 4, units = "in")
+ggsave("WindSummary_Stratified.png", path = here("manuscript/Figures/"), width = 8, height = 8, units = "in")
 ```
 
 ```{r}

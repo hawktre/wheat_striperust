@@ -201,7 +201,8 @@ source_pred <- function(config, blk, trt, vst, n_src, p_mat, mod_dat) {
     n_correct = n_correct,
     acc = acc,
     dist_acc = mean(weighted_acc),
-    component_dist_acc = list(weighted_acc)
+    component_dist_acc = list(weighted_acc),
+    predicted_source = list(predicted_source)
   )
   # 5. Compute other metrics 
   return(as.data.table(result))

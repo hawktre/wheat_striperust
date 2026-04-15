@@ -20,7 +20,7 @@ library(data.table)
 
 ## Read in necessary functions
 source(here("Code/R/backward_model_shared/03a_BackwardGradFunShared_vectorized.R"))
-
+source(here("Code/R/backward_model_shared/03b_BackwardModelFunShared.R"))
 ## Read in forward fits
 forward <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
@@ -30,32 +30,34 @@ blocks <- dimnames(mod_dat$intensity)[["block"]]
 treats <- dimnames(mod_dat$intensity)[["treat"]]
 visits <- dimnames(mod_dat$intensity)[["visit"]]
 configs <- dimnames(mod_dat$groups)[["config"]]
+n_src <- c(1, 2, 3, 4)
 
 # Create full combinations
-combos_backward <- expand.grid(config = configs, blk = blocks, trt = treats, vst = visits[-1], stringsAsFactors = FALSE)
+combos_backward <- expand.grid(config = configs, blk = blocks, trt = treats, n_src = n_src, vst = visits[-1], stringsAsFactors = FALSE)
 combos_backward <- left_join(combos_backward, forward %>% select(block, treat, visit, theta), 
                              by = c("blk"="block", "trt"="treat", "vst"="visit")) |> 
   filter(!(config == "64" & trt == "4"))
 
 
-# Get array task ID (which row to process)
+#Get array task ID (which row to process)
 task_id <- as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID"))
 
 if (is.na(task_id)) {
-  stop("SLURM_ARRAY_TASK_ID not set. This script must be run as a SLURM array job.")
+ stop("SLURM_ARRAY_TASK_ID not set. This script must be run as a SLURM array job.")
 }
 
 # Process only this task's row
-combo <- combos_backward[task_id, ]
+combo <- combos_backward[1, ]
 
 message("Processing task ", task_id, " of ", nrow(combos_backward))
-message("Config: ", combo$config, ", Block: ", combo$blk, ", Treat: ", combo$trt, ", Visit: ", combo$vst)
+message("Config: ", combo$config, ", Block: ", combo$blk, ", Treat: ", combo$trt,", N_SRC: ", combo$n_src, ", Visit: ", combo$vst)
 
 start <- Sys.time()
 backward_result <- backward_fit(config = combo$config,
                                 blk = combo$blk,
                                 trt = combo$trt,
                                 vst = combo$vst,
+                                n_src = combo$n_src,
                                 inits = combo$theta[[1]],
                                 mod_dat = mod_dat,
                                 tol = 1e-4,
@@ -67,6 +69,6 @@ message("Runtime = ", round(runtime, 2), " minutes")
 # Save individual result
 output_dir <- here("DataProcessed/results/backward_model/array_results_shared")
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
-saveRDS(backward_result, file.path(output_dir, paste0("backward_blk", combo$blk,"_trt",combo$trt,"_vst",combo$vst,"_config",combo$config, "_shared.rds")))
+saveRDS(backward_result, file.path(output_dir, paste0("backward_blk", combo$blk,"_trt",combo$trt,"_vst",combo$vst,"_config", combo$config, "_nsrc", combo$n_src, "_shared.rds")))
 
 message("Task ", task_id, " completed successfully")

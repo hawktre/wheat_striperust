@@ -23,7 +23,7 @@ source(here("Code/R/backward_model_shared/03a_BackwardGradFunShared_vectorized.R
 source(here("Code/R/forward_model/02a_ForwardGradFun.R"))
 
 # Backward Fit ------------------------------------------------------------
-backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, tol = 1e-4) {
+backward_fit <- function(config, blk, trt, vst, n_src, mod_dat, inits, max_iter = 100, tol = 1e-4) {
   
   ## Extract needed data
   intensity <- mod_dat$intensity[, blk, trt, vst]
@@ -33,7 +33,7 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
   group_id <- mod_dat$groups[, config]
   
   # Initializations
-  S <- length(unique(na.omit(mod_dat$truth[blk, trt,,config])))
+  S <- n_src
   combos <- combn(sort(unique(group_id)), S)
   K <- ncol(combos)
   prior <- rep(1 / K, K)
@@ -85,13 +85,19 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
     ## Compute observed log-likelihood and Q
     observed_ll[iter] <- E$ll_obs
     
+    # Compute BIC
+    n_obs <- length(intensity)  
+    n_params <- 5 + K  # 5 shared parameters + K mixing weights
+    bic <- -2 * (-observed_ll[iter]) + n_params * log(n_obs)
     
     ## Convergence checks
     if (!is.finite(observed_ll[iter]) || iter == max_em_iter) {
       return(data.table(
         config = config, block = blk, treat = trt, visit = as.numeric(vst), n_src = S,
-        em_iters = iter, converged = FALSE,
+        em_iters = iter, converged = FALSE,  
         Q_track = list(observed_ll[1:iter]), Q_final = observed_ll[iter],
+        bic = bic,  
+        n_params = n_params,  
         theta = list(M$theta_new), p_mat = list(E$p_mat), pi = list(M$pi)
       ))
     }
@@ -101,8 +107,10 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
     if (observed_ll_diff < tol || theta_diff < tol) {
       return(data.table(
         config = config, block = blk, treat = trt, visit = as.numeric(vst), n_src = S,
-        em_iters = iter, converged = TRUE,
+        em_iters = iter, converged = TRUE,  
         Q_track = list(observed_ll[1:iter]), Q_final = observed_ll[iter],
+        bic = bic,  
+        n_params = n_params,  
         theta = list(M$theta_new), p_mat = list(E$p_mat), pi = list(M$pi)
       ))
     }
@@ -114,7 +122,6 @@ backward_fit <- function(config, blk, trt, vst, mod_dat, inits, max_iter = 100, 
 
 # Create function for distance-weighted accuracy -------------------------
 dist_acc <- function(error_mat){
-  
   #Just return the metric if length 1
   if(length(error_mat) == 1){
     d_pred <- error_mat
@@ -204,7 +211,9 @@ source_pred <- function(config, blk, trt, vst, n_src, p_mat, mod_dat) {
     n_correct = n_correct,
     acc = acc,
     dist_acc = mean(weighted_acc),
-    component_dist_acc = list(weighted_acc)
+    component_dist_acc = list(weighted_acc),
+    predicted_source = list(predicted_source),
+    true_source = list(true_source)
   )
   # 5. Compute other metrics 
   return(as.data.table(result))

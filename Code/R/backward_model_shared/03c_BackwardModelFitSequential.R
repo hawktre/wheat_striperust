@@ -19,7 +19,7 @@ library(parallel)
 library(data.table)
 
 ## Read in necessary functions
-source(here("Code/R/backward_model_shared/03a_BackwardGradFunShared_vectorized.R"))
+source(here("Code/R/backward_model_shared/03b_BackwardModelFunShared.R"))
 
 ## Read in forward fits
 forward <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))
@@ -34,8 +34,7 @@ configs <- dimnames(mod_dat$groups)[["config"]]
 # Create full combinations
 combos_backward <- expand.grid(config = configs, blk = blocks, trt = treats, vst = visits[-1], stringsAsFactors = FALSE)
 combos_backward <- left_join(combos_backward, forward %>% select(block, treat, visit, theta), 
-                             by = c("blk"="block", "trt"="treat", "vst"="visit")) |> 
-  filter(!(config == "64" & trt == "4"))
+                             by = c("blk"="block", "trt"="treat", "vst"="visit")) 
 
 start <- Sys.time()
 backward_results <- lapply(seq_len(nrow(combos_backward)), function(row) {
@@ -53,3 +52,6 @@ backward_results <- lapply(seq_len(nrow(combos_backward)), function(row) {
 end <- Sys.time()
 runtime <- difftime(end, start, units = "mins")
 message("Runtime = ", round(runtime, 2), " minutes")
+
+saveRDS(backward_results, here("DataProcessed/results/backward_model/backward_fits_shared_allcombos.rds"))
+

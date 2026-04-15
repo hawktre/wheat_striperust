@@ -33,12 +33,12 @@ library(here)
 # Read in the data and simulations ----------------------------------------
 forward <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))
 backward <- readRDS(here("DataProcessed/results/backward_model/backward_fits_shared.rds"))
-sims <- readRDS(here("DataProcessed/results/simulation/batch_results/simulation_batch3.rds"))
+sims <- readRDS(here("DataProcessed/results/simulation/sims.rds"))
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
 
 # Forward model parameters ------------------------------------------------
 forward_sims <- sims %>% 
-  select(sim, block, treat, visit, iters, converged.forward, init_kappa, theta, pi) %>% 
+  select(sim, block, treat, visit, iters, converged.forward, init_kappa, theta.forward, alpha) %>% 
   distinct()
 
 not_converged_forward <- forward_sims %>% 
@@ -50,11 +50,13 @@ not_converged_forward <- forward_sims %>%
 forward_sims_long <- forward_sims %>%
   filter(converged.forward == T) %>% 
   # Convert each named theta vector into a tibble (with name = param)
-  mutate(theta = map(theta, ~ enframe(.x, name = "param", value = "value"))) %>%
+  mutate(theta = map(theta.forward, ~ enframe(.x, name = "param", value = "value"))) %>%
   # Unnest into long format
-  unnest(theta)
+  unnest(theta) |> 
+  mutate(visit = as.character(visit))
 
 true_params <- forward %>% 
+  mutate(visit = as.character(visit)) |> 
   mutate(theta = map(theta, ~ enframe(.x, name = "param", value = "value"))) %>%
   # Unnest into long format
   unnest(theta) %>% 

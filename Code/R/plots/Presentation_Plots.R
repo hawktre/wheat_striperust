@@ -60,6 +60,8 @@ backward_2024 <- readRDS(here("DataProcessed/results/backward_model/backward_fit
 ## Set plotting colors
 intensity_cols <- wesanderson::wes_palette("Zissou1", 7, type = c("continuous"))
 
+
+
 # Threshold plot -------------------------------------------------------
 stripe_2024 %>% 
   mutate(diseased = if_else(intensity > 0, "Yes", "No")) %>% 
@@ -687,4 +689,7 @@ error = mean(mean_error),
   tab_spanner(columns = contains("dist_acc"), label = "Distance-Weighted Acc.") |> 
   tab_spanner(columns = starts_with("acc"), label = "Accuracy") |> 
   tab_spanner(columns = contains("error"), label = "Error (m)")
+
+
+# Wind Summary -----------------------------------------------------------
 
