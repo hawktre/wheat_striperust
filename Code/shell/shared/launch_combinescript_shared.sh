@@ -3,7 +3,7 @@
 #SBATCH -o merge_%j.out
 #SBATCH -e merge_%j.err
 #SBATCH -c 1
-#SBATCH --mem=4G
+#SBATCH --mem=16G
 #SBATCH --time=00:30:00
 
 module load R
