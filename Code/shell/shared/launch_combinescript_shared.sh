@@ -9,4 +9,4 @@
 module load R
 export R_LIBS="$HOME/R_libs/4.4"
 
-Rscript Code/R/backward_model_shared/03d_CombineBackward_Results.R
+Rscript Code/R/backward_model_shared/03d_CombineBackward_Shared.R
