@@ -7,7 +7,7 @@ source(here("Code/R/backward_model_shared/03b_BackwardModelFunShared.R"))
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
 forward <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))
 backward_individual <- readRDS(here("DataProcessed/results/backward_model/backward_fits_individual.rds"))
-backward_shared <- readRDS(here("DataProcessed/results/backward_model/backward_fits_shared_allcombos.rds"))
+backward_shared <- readRDS(here("DataProcessed/results/backward_model/backward_fits_shared.rds"))
 backward_sensitivity <- readRDS(here("DataProcessed/results/backward_model/backward_fits_sensitivity_sequential.rds"))
 # Add labels to results and merge them -------------------------------------------------
 backward_individual <- backward_individual |> mutate(result_type = "individual")

@@ -99,11 +99,10 @@ backward_fit <- function(config, blk, trt, vst, n_src, mod_dat, inits, max_iter 
     if (!is.finite(observed_ll[iter]) || iter == max_em_iter) {
       return(data.table(
         config = config, block = blk, treat = trt, visit = as.numeric(vst), n_src = S,
-        em_iters = iter, converged = FALSE,  
-        Q_track = list(observed_ll[1:iter]), Q_final = observed_ll[iter],
+        em_iters = iter, converged = FALSE, loglik = observed_ll[iter],
         bic = bic,  
         n_params = n_params,  
-        theta = list(M$theta_new), p_mat = list(E$p_mat), pi = list(M$pi)
+        theta = list(M$theta_new), p_mat = list(E$p_mat)
       ))
     }
     
@@ -112,11 +111,10 @@ backward_fit <- function(config, blk, trt, vst, n_src, mod_dat, inits, max_iter 
     if (observed_ll_diff < tol || theta_diff < tol) {
       return(data.table(
         config = config, block = blk, treat = trt, visit = as.numeric(vst), n_src = S,
-        em_iters = iter, converged = TRUE,  
-        Q_track = list(observed_ll[1:iter]), Q_final = observed_ll[iter],
+        em_iters = iter, converged = TRUE, loglik = observed_ll[iter],
         bic = bic,  
         n_params = n_params,  
-        theta = list(M$theta_new), p_mat = list(E$p_mat), pi = list(M$pi)
+        theta = list(M$theta_new), p_mat = list(E$p_mat)
       ))
     }
     
@@ -172,7 +170,7 @@ dist_acc <- function(error_mat){
 }
 
 source_pred <- function(config, blk, trt, vst, n_src, p_mat, mod_dat) {
- 
+ #browser()
   # Ensure groups is a factor with levels = 1:n_groups
   groups <- as.factor(mod_dat$groups[,config])
   levels(groups) <- sort(unique(groups))
@@ -198,20 +196,27 @@ source_pred <- function(config, blk, trt, vst, n_src, p_mat, mod_dat) {
   # 3. Compare to ground truth
   true_source <- sort(unique(as.numeric(mod_dat$truth[blk,trt,,config][1:trt])))
   
-  # 4. Compute error (closest that is not already assigned)
-  dist <- mod_dat$grid_dist[[config]]
-  error <- dist[predicted_source, true_source]
-  d_pred <- dist_acc(error)
-  weighted_acc <- 1 - (d_pred/max(dist))
-  acc <- mean(predicted_source %in% true_source)
-  n_correct <- sum(predicted_source %in% true_source)
+  # 4. Compute error if the correct number of sources was predicted (closest that is not already assigned)
+  if(length(predicted_source) == length(true_source)){
+    dist <- mod_dat$grid_dist[[config]]
+    error <- dist[predicted_source, true_source]
+    d_pred <- dist_acc(error)
+    weighted_acc <- 1 - (d_pred/max(dist))
+    acc <- mean(predicted_source %in% true_source)
+    n_correct <- sum(predicted_source %in% true_source)}
+  else{dist <- NA
+  error <- NA
+  d_pred <- NA
+  weighted_acc <- NA
+  acc <- NA
+  n_correct <-NA}
+  
   result <- list(
     config = config,
     block = blk,
     treat = trt,
-    visit = vst,
+    visit = as.numeric(vst),
     n_src = n_src,
-    p_bar = list(p_bar),
     mean_error = mean(d_pred),
     n_correct = n_correct,
     acc = acc,
