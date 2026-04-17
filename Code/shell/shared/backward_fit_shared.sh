@@ -3,8 +3,8 @@
 #SBATCH -o DataProcessed/results/backward_model/logs/backward_fit_shared_%A_%a.out     # Stdout log (%A=job ID, %a=array index)
 #SBATCH -e DataProcessed/results/backward_model/logs/backward_fit_shared_%A_%a.err     # Stderr log
 #SBATCH -c 1                        # CPU cores per task
-#SBATCH --mem = 16G                     # Memory per task
-#SBATCH --time = 12:00:00             # Walltime per task
+#SBATCH --mem=16G                     # Memory per task
+#SBATCH --time=12:00:00             # Walltime per task
 
 set -euo pipefail
 
