@@ -17,6 +17,7 @@ fi
 
 # Clear old log files
 rm -f DataProcessed/results/simulation/logs/simulation_*.out DataProcessed/results/simulation/logs/simulation_*.err
+rm -f DataProcessed/results/simulation/simulation_*.rds
 
 # Create logs directory if it doesn't exist
 mkdir -p DataProcessed/results/simulation/logs
