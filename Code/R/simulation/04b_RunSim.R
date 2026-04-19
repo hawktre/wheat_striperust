@@ -31,15 +31,14 @@ kappa_try <- c(0.5, 0.8, 1.2, 1.6, 2.0, 2.5, 3.0, 4.0)
 args <- commandArgs(trailingOnly = TRUE)
 
 # Set default value of simulations
-nsim <- 2
+nsim <- 100
 # Override with argument if provided
 if (length(args) >= 1) {
   nsim <- as.numeric(args[1])
 }
 
 # Get array task ID (which row to process)
-# task_id <- as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID"))
-task_id <- 10
+task_id <- as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID"))
 cat("Running", nsim, "simulations\n")
 
 # Use SLURM_CPUS_PER_TASK if available
