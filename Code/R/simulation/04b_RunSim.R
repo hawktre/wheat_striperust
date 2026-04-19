@@ -15,8 +15,10 @@ library(here)
 library(data.table)
 library(dplyr)
 library(purrr)
-library(parallel) # Use base parallel package
+library(parallel)
+
 source(here("Code/R/forward_model/02b_ForwardModelFun.R"))
+source(here("Code/R/backward_model_shared/03a_BackwardGradFunShared.R"))
 source(here("Code/R/backward_model_shared/03b_BackwardModelFunShared.R"))
 source(here("Code/R/simulation/04a_SimFunc.R"))
 
@@ -25,45 +27,46 @@ forward_fits <- readRDS(here(
   "DataProcessed/results/forward_model/forward_fits.rds"
 ))
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
-kappa_try <- c(0.5, 0.8, 1.2, 1.6, 2.0, 2.5, 3.0, 4.0)
+kappa_try <- exp(seq(log(0.5), log(4.0), length.out = 8))
 
 # Take args from command line
 args <- commandArgs(trailingOnly = TRUE)
 
-# Set default value of simulations
-nsim <- 100
-# Override with argument if provided
+nsim <- 25
 if (length(args) >= 1) {
   nsim <- as.numeric(args[1])
 }
 
-# Get array task ID (which row to process)
+# Get array task ID
 task_id <- as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID"))
-cat("Running", nsim, "simulations\n")
+if (is.na(task_id)) {
+  stop("SLURM_ARRAY_TASK_ID not set.")
+}
+cat("Running", nsim, "simulations for task", task_id, "\n")
 
 # Use SLURM_CPUS_PER_TASK if available
 ncores <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK"))
-
 if (is.na(ncores) || ncores <= 0) {
   ncores <- parallel::detectCores(logical = FALSE)
 }
 ncores <- min(nsim, ncores)
-cat("Using", ncores, "cores for simulations\n")
+cat("Using", ncores, "cores\n")
 
-#Run the simulations
+# Run the simulations
 sim_list <- mclapply(
   seq_len(nsim),
   function(i) {
     t0 <- Sys.time()
     cur.sim <- (task_id * nsim) + i
+
     result <- single_sim(
-      cur.sim,
-      mod_dat,
-      forward_fits,
+      sim_id = cur.sim,
+      dat = mod_dat,
+      forward_mod = forward_fits,
       kappa_try = kappa_try,
       output_dir = here("DataProcessed/results/simulation/errors")
     )
-    #Filter for either bic slection or correct prediction to prevent keeping trash rows
+
     result <- result |>
       group_by(config, treat, visit) |>
       mutate(bic_selected = bic == min(bic)) |>
@@ -73,20 +76,17 @@ sim_list <- mclapply(
       ) |>
       ungroup()
 
-    t1 <- Sys.time()
-    elapsed <- as.numeric(difftime(t1, t0, units = "mins"))
-
-    log_msg <- sprintf(
-      "Sim %05d done in %.1f mins at %s\n",
-      cur.sim,
-      elapsed,
-      format(Sys.time(), "%Y-%m-%d %H:%M:%S")
-    )
+    elapsed <- as.numeric(difftime(Sys.time(), t0, units = "mins"))
     cat(
-      log_msg,
+      sprintf(
+        "Sim %05d done in %.1f mins at %s\n",
+        cur.sim,
+        elapsed,
+        format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+      ),
       file = file.path(
         here("DataProcessed/results/simulation/logs"),
-        paste0("sim_progress.log")
+        "sim_progress.log"
       ),
       append = TRUE
     )
@@ -97,11 +97,9 @@ sim_list <- mclapply(
   mc.preschedule = FALSE
 )
 
-
-# Combine results into a data.frame
+# Combine and save
 sims <- rbindlist(sim_list)
 
-# Save individual result
 output_dir <- here("DataProcessed/results/simulation/batch_results")
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 saveRDS(

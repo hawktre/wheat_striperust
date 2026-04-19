@@ -16,9 +16,7 @@ library(here)
 library(parallel)
 library(data.table)
 ## Read in necessary functions
-source(here(
-  "Code/R/backward_model_shared/03a_BackwardGradFunShared_vectorized.R"
-))
+source(here("Code/R/backward_model_shared/03a_BackwardGradFunShared.R"))
 source(here("Code/R/backward_model_shared/03b_BackwardModelFunShared.R"))
 ## Read in forward fits
 forward <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))
@@ -34,17 +32,18 @@ n_src <- c(1, 2, 3, 4)
 # Create full combinations
 combos_backward <- expand.grid(
   config = configs,
-  blk = blocks,
-  trt = treats,
+  block = blocks,
+  treat = treats,
   n_src = n_src,
-  vst = visits[-1],
+  visit = visits[-1],
   stringsAsFactors = FALSE
 ) |>
-  filter(!(config == "4" & n_src == 4))
+  filter(!(config == "4" & n_src == 4), !(config == "64" & n_src == 4))
+
 combos_backward <- left_join(
   combos_backward,
   forward %>% select(block, treat, visit, theta),
-  by = c("blk" = "block", "trt" = "treat", "vst" = "visit")
+  by = c("block", "treat", "visit")
 )
 
 # Get array task ID (which row to process)
@@ -54,18 +53,18 @@ combos_backward <- left_join(
 # }
 
 # Process only this task's row
-combo <- combos_backward[956, ]
+combo <- combos_backward[99, ]
 # message("Processing task ", task_id, " of ", nrow(combos_backward))
-# message("Config: ", combo$config, ", Block: ", combo$blk, ", Treat: ", combo$trt,", N_SRC: ", combo$n_src, ", Visit: ", combo$vst)
+# message("Config: ", combo$config, ", Block: ", combo$block, ", Treat: ", combo$treat,", N_SRC: ", combo$n_src, ", Visit: ", combo$visit)
 
 start <- Sys.time()
 
 # Fit model
 backward_result <- backward_fit(
   config = combo$config,
-  blk = combo$blk,
-  trt = combo$trt,
-  vst = combo$vst,
+  blk = combo$block,
+  trt = combo$treat,
+  vst = combo$visit,
   n_src = combo$n_src,
   inits = combo$theta[[1]],
   mod_dat = mod_dat,
@@ -77,9 +76,9 @@ backward_result <- backward_fit(
 if (backward_result$converged && !is.null(backward_result$p_mat)) {
   predictions <- source_pred(
     config = combo$config,
-    blk = combo$blk,
-    trt = combo$trt,
-    vst = combo$vst,
+    blk = combo$block,
+    trt = combo$treat,
+    vst = combo$visit,
     n_src = combo$n_src,
     p_mat = backward_result$p_mat[[1]],
     mod_dat = mod_dat
@@ -87,9 +86,9 @@ if (backward_result$converged && !is.null(backward_result$p_mat)) {
 } else {
   predictions <- data.table(
     config = combo$config,
-    block = combo$blk,
-    treat = combo$trt,
-    visit = combo$vst,
+    blk = combo$block,
+    trt = combo$treat,
+    vst = combo$visit,
     n_src = combo$n_src,
     mean_error = NA,
     n_correct = NA,
@@ -102,7 +101,7 @@ if (backward_result$converged && !is.null(backward_result$p_mat)) {
 }
 
 # Drop large objects and merge
-backward_result <- backward_result[, !c("p_mat", "pi")]
+backward_result <- backward_result[, !c("p_mat")]
 final_result <- merge(
   backward_result,
   predictions,
@@ -120,12 +119,12 @@ saveRDS(
   file.path(
     output_dir,
     paste0(
-      "backward_blk",
-      combo$blk,
-      "_trt",
-      combo$trt,
-      "_vst",
-      combo$vst,
+      "backward_block",
+      combo$block,
+      "_treat",
+      combo$treat,
+      "_visit",
+      combo$visit,
       "_config",
       combo$config,
       "_nsrc",

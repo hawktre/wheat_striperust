@@ -1,0 +1,9 @@
+Simulation failed:
+sim_id: 592
+message: [1m[22m[36mℹ[39m In index: 1.
+[1mCaused by error in `forward_fit()`:[22m
+[33m![39m could not find function "forward_fit"
+class: purrr_error_indexed, rlang_error, error, condition
+call: pmap(combos_forward, ~forward_fit(..1, ..2, ..3, dat, kappa_try))
+
+Dumped frames to:  /Users/trentvanhawkins/Library/Mobile Documents/com~apple~CloudDocs/Documents/School/OSU/dissertation/wheat_striperust/DataProcessed/results/simulation/sim_dump_592 .rda

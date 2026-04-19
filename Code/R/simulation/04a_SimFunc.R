@@ -10,34 +10,34 @@
 ##
 ##
 ## ---------------------------
-##
-## Notes:
-##
-##
-## ---------------------------
-
-## ---------------------------
-
-## view outputs in non-scientific notation
 options(scipen = 6, digits = 4)
 
-## ---------------------------
-
-## load up the packages we will need:  (uncomment as required)
+prediction_cols <- c(
+  "mean_error",
+  "n_correct",
+  "acc",
+  "dist_acc",
+  "component_dist_acc",
+  "predicted_source",
+  "true_source",
+  "naive_source",
+  "naive_mean_error",
+  "naive_n_correct",
+  "naive_acc",
+  "naive_dist_acc",
+  "naive_component_dist_acc"
+)
 
 # Function to simulate the data -------------------------------------------
 disease_sim <- function(pars, mu, alpha) {
   phi <- exp(pars[["phi"]])
 
-  # Convert to shape parameters
   a <- mu * phi
   b <- phi * (1 - mu)
 
-  # Minimum and maximum perceptible values
   min_detectable <- 0.0001
-  max_detectable <- 1 - 0.0001 # or 0.9999
+  max_detectable <- 1 - 0.0001
 
-  # Draw from beta and clip both bounds
   sim_dat <- map2_dbl(
     a,
     b,
@@ -47,9 +47,7 @@ disease_sim <- function(pars, mu, alpha) {
     }
   )
 
-  # Apply zero inflation
   zeros <- rbinom(length(sim_dat), size = 1, prob = 1 - alpha)
-
   return(sim_dat * zeros)
 }
 
@@ -64,6 +62,7 @@ single_sim <- function(
 ) {
   base_seed <- 404
   set.seed(base_seed + sim_id)
+
   tryCatch(
     {
       # Set up indices
@@ -94,6 +93,7 @@ single_sim <- function(
         visit = visits[-1],
         stringsAsFactors = FALSE
       )
+
       forward <- pmap(
         combos_forward,
         ~ forward_fit(..1, ..2, ..3, dat, kappa_try)
@@ -110,19 +110,19 @@ single_sim <- function(
         stringsAsFactors = FALSE
       ) |>
         filter(
-          !(config == "64" & n_src > 1),
+          !(config == "64" & treat > 2),
+          !(config == "64" & n_src > 2),
           !(config == "4" & n_src == "4")
-        ) |> # Exclude problematic combinations for simulations
+        ) |>
         left_join(
           forward |> select(block, treat, visit, theta),
           by = c("block", "treat", "visit")
         )
 
       # Process each backward combination
-      results_list <- lapply(seq_len(nrow(combos_backward)), function(row) {
-        combo <- combos_backward[row, ]
+      results_list <- lapply(seq_len(nrow(combos_backward)), function(i) {
+        combo <- combos_backward[i, ]
 
-        # Fit backward model
         backward_result <- backward_fit(
           config = combo$config,
           blk = combo$block,
@@ -135,9 +135,10 @@ single_sim <- function(
           max_iter = 200
         )
 
-        # Get predictions
-        if (backward_result$converged && !is.null(backward_result$p_mat)) {
-          predictions <- source_pred(
+        predictions <- if (
+          backward_result$converged && !is.null(backward_result$p_mat)
+        ) {
+          source_pred(
             config = combo$config,
             blk = combo$block,
             trt = combo$treat,
@@ -147,31 +148,21 @@ single_sim <- function(
             mod_dat = dat
           )
         } else {
-          predictions <- data.table(
-            config = combo$config,
-            block = combo$block,
-            treat = combo$treat,
-            visit = combo$visit,
-            n_src = combo$n_src,
-            mean_error = NA,
-            n_correct = NA,
-            acc = NA,
-            dist_acc = NA,
-            component_dist_acc = list(NA),
-            predicted_source = list(NA),
-            true_source = list(NA)
-          )
+          NULL
         }
 
-        # Drop large objects and merge
         backward_result <- backward_result[, !c("p_mat")]
-        result <- merge(
-          backward_result,
-          predictions,
-          by = c("config", "block", "treat", "visit", "n_src")
-        )
 
-        return(result)
+        if (!is.null(predictions)) {
+          merge(
+            backward_result,
+            predictions,
+            by = c("config", "block", "treat", "visit", "n_src")
+          )
+        } else {
+          backward_result[, (prediction_cols) := NA]
+          backward_result
+        }
       })
 
       # Combine all results
@@ -190,7 +181,6 @@ single_sim <- function(
       return(final_results)
     },
     error = function(e) {
-      # rich, reproducible log
       err_file <- file.path(output_dir, sprintf("sim_error_%s.txt", sim_id))
       cat(
         "Simulation failed:\n",
@@ -211,7 +201,6 @@ single_sim <- function(
         sep = ""
       )
 
-      # capture the call stack for later interactive debugging
       dump_name <- file.path(output_dir, sprintf("sim_dump_%s", sim_id))
       dump.frames(dump_name, to.file = TRUE)
 
@@ -223,7 +212,6 @@ single_sim <- function(
         append = TRUE
       )
 
-      # if you're in an interactive session, stop so you SEE the error
       stop(e)
     }
   )

@@ -20,7 +20,7 @@ library(data.table)
 library(RcppHungarian)
 ## Read in the needed functions
 source(here(
-  "Code/R/backward_model_shared/03a_BackwardGradFunShared_vectorized.R"
+  "Code/R/backward_model_shared/03a_BackwardGradFunShared.R"
 ))
 source(here("Code/R/forward_model/02a_ForwardGradFun.R"))
 
@@ -204,6 +204,8 @@ dist_acc <- function(error_mat) {
 }
 
 source_pred <- function(config, blk, trt, vst, n_src, p_mat, mod_dat) {
+  intensity <- mod_dat$intensity[, blk, trt, vst]
+
   # Ensure groups is a factor with levels = 1:n_groups
   groups <- as.factor(mod_dat$groups[, config])
   levels(groups) <- sort(unique(groups))
@@ -212,16 +214,12 @@ source_pred <- function(config, blk, trt, vst, n_src, p_mat, mod_dat) {
   group_ids <- sort(unique(groups))
   n_groups <- length(group_ids)
 
+  #Set up number of sources to predict
   S <- as.numeric(n_src)
   combos <- combn(sort(unique(group_ids)), S)
   K <- ncol(combos)
 
-  p_bar <- matrix(NA, n_groups, K)
-
-  for (g in 1:n_groups) {
-    rows_in_group <- which(groups %in% group_ids[g])
-    p_bar[g, ] <- colMeans(p_mat[rows_in_group, , drop = FALSE])
-  }
+  p_bar <- rowsum(p_mat, groups) / tabulate(groups)
 
   # 2. Predict source group for each destination group (row-wise argmax)
   predicted_source <- combos[, which(
@@ -229,42 +227,68 @@ source_pred <- function(config, blk, trt, vst, n_src, p_mat, mod_dat) {
     arr.ind = T
   )[[2]]]
 
+  # 2b. Naive prediction: top S groups by mean intensity
+  group_max_intensity <- as.numeric(tapply(intensity, groups, max))
+  naive_source <- as.numeric(group_ids[order(
+    group_max_intensity,
+    decreasing = TRUE
+  )[1:S]])
+
   # 3. Compare to ground truth
   true_source <- sort(unique(as.numeric(mod_dat$truth[blk, trt, , config][
     1:trt
   ])))
 
-  # 4. Compute error if the correct number of sources was predicted (closest that is not already assigned)
-  if (length(predicted_source) == length(true_source)) {
-    dist <- mod_dat$grid_dist[[config]]
-    error <- dist[predicted_source, true_source]
-    d_pred <- dist_acc(error)
-    weighted_acc <- 1 - (d_pred / max(dist))
-    acc <- mean(predicted_source %in% true_source)
-    n_correct <- sum(predicted_source %in% true_source)
-  } else {
-    dist <- NA
-    error <- NA
-    d_pred <- NA
-    weighted_acc <- NA
-    acc <- NA
-    n_correct <- NA
+  # 4. Helper to compute accuracy metrics given a predicted source
+  compute_metrics <- function(predicted) {
+    if (length(predicted) == length(true_source)) {
+      dist <- mod_dat$grid_dist[[config]]
+      error <- dist[predicted, true_source]
+      d_pred <- dist_acc(error)
+      weighted_acc <- 1 - (d_pred / max(dist))
+      acc <- mean(predicted %in% true_source)
+      n_correct <- sum(predicted %in% true_source)
+    } else {
+      d_pred <- NA
+      weighted_acc <- NA
+      acc <- NA
+      n_correct <- NA
+    }
+    list(
+      mean_error = mean(d_pred),
+      n_correct = n_correct,
+      acc = acc,
+      dist_acc = mean(weighted_acc),
+      component_dist_acc = list(weighted_acc),
+      predicted_source = list(predicted)
+    )
   }
 
-  result <- list(
+  model_metrics <- compute_metrics(predicted_source)
+  naive_metrics <- compute_metrics(naive_source)
+
+  result <- data.table(
     config = config,
     block = blk,
     treat = trt,
     visit = as.numeric(vst),
     n_src = n_src,
-    mean_error = mean(d_pred),
-    n_correct = n_correct,
-    acc = acc,
-    dist_acc = mean(weighted_acc),
-    component_dist_acc = list(weighted_acc),
-    predicted_source = list(predicted_source),
-    true_source = list(true_source)
+    true_source = list(true_source),
+    # Model predictions
+    predicted_source = model_metrics$predicted_source,
+    mean_error = model_metrics$mean_error,
+    n_correct = model_metrics$n_correct,
+    acc = model_metrics$acc,
+    dist_acc = model_metrics$dist_acc,
+    component_dist_acc = model_metrics$component_dist_acc,
+    # Naive predictions
+    naive_source = naive_metrics$predicted_source,
+    naive_mean_error = naive_metrics$mean_error,
+    naive_n_correct = naive_metrics$n_correct,
+    naive_acc = naive_metrics$acc,
+    naive_dist_acc = naive_metrics$dist_acc,
+    naive_component_dist_acc = naive_metrics$component_dist_acc
   )
-  # 5. Compute other metrics
-  return(as.data.table(result))
+
+  return(result)
 }
