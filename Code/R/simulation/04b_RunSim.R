@@ -32,7 +32,7 @@ kappa_try <- exp(seq(log(0.5), log(4.0), length.out = 8))
 # Take args from command line
 args <- commandArgs(trailingOnly = TRUE)
 
-nsim <- 25
+nsim <- 100
 if (length(args) >= 1) {
   nsim <- as.numeric(args[1])
 }
