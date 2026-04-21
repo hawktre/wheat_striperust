@@ -78,7 +78,6 @@ results <- mclapply(
 
     tryCatch(
       {
-        # Fit model
         backward_result <- backward_fit(
           config = combo$config,
           blk = combo$block,
@@ -91,7 +90,6 @@ results <- mclapply(
           max_iter = 200
         )
 
-        # Drop p_mat before merging
         predictions <- if (
           backward_result$converged && !is.null(backward_result$p_mat)
         ) {
@@ -110,7 +108,7 @@ results <- mclapply(
 
         backward_result <- backward_result[, !c("p_mat")]
 
-        if (!is.null(predictions)) {
+        result <- if (!is.null(predictions)) {
           merge(
             backward_result,
             predictions,
@@ -120,6 +118,13 @@ results <- mclapply(
           backward_result[, (prediction_cols) := NA]
           backward_result
         }
+
+        # Report progress in batches of 50
+        if (i %% 50 == 0) {
+          message("Completed ", i, " of ", nrow(combos_backward), " rows")
+        }
+
+        result
       },
       error = function(e) {
         message("Task ", i, " failed: ", conditionMessage(e))

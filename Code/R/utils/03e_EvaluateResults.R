@@ -23,13 +23,16 @@ bic_preds <- backward_shared |>
   slice_min(bic) |>
   ungroup()
 
-test <- bic_preds |>
+bic_preds |>
   mutate(n_true = lengths(true_source)) |>
-  group_by(config, n_true, visit) |>
+  group_by(config, n_true) |>
   summarise(
     N = n(),
     n_correct = sum(lengths(predicted_source) == lengths(true_source))
-  )
+  ) |>
+  arrange(n_true, config) |>
+  kableExtra::kable() |>
+  kableExtra::kable_styling()
 # Add labels to results and merge them -------------------------------------------------
 backward_individual <- backward_individual |> mutate(result_type = "individual")
 backward_shared <- backward_shared |> mutate(result_type = "shared")

@@ -108,7 +108,7 @@ backward_fit <- function(
 
     # Compute BIC
     n_obs <- length(intensity)
-    n_params <- 5 + K # 5 shared parameters + K mixing weights
+    n_params <- 5 + K - 1 # 5 shared parameters + K mixing weights
     bic <- -2 * (-observed_ll[iter]) + n_params * log(n_obs)
 
     ## Convergence checks

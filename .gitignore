@@ -50,3 +50,5 @@ vignettes/*.pdf
 *.png
 *.jpg
 *.jpeg
+
+.venv/*

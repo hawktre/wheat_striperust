@@ -166,7 +166,7 @@ single_sim <- function(
       })
 
       # Combine all results
-      backward_results <- rbindlist(results_list)
+      backward_results <- rbindlist(results_list, use.names = TRUE)
 
       # Merge with forward results and add simulation ID
       final_results <- merge(
