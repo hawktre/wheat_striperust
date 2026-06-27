@@ -48,13 +48,9 @@ kappa_inner_sum <- function(y_prev, wind_matrix, dist_matrix, d0, kappa, derivat
 
 initialize_theta <- function(y, y_prev, wind_mat, dist_mat, d_0, kappa) {
   
-  #Subset non-zero observations
   non_zero <- which(y > 0)
   
-  #Construct the design matrix
-  X1 <- y_prev * (1- y_prev)
-  
-  # Get dispersal component and construct design matrix
+  X1 <- y_prev * (1 - y_prev)
   X2 <- kappa_inner_sum(y_prev = y_prev, 
                         wind_matrix = wind_mat,
                         dist_matrix = dist_mat,
@@ -62,80 +58,51 @@ initialize_theta <- function(y, y_prev, wind_mat, dist_mat, d_0, kappa) {
                         derivative = FALSE,
                         kappa = kappa)
   
-  mod_df <- data.frame(y = logit(y[non_zero]),
+  mod_df <- data.frame(y = logit(pmin(pmax(y[non_zero], 1e-5), 1 - 1e-5)),
                        X1 = X1[non_zero],
                        X2 = X2[non_zero])
   
-  
-  fit <- lm(y~X1 + X2, data = mod_df)
-  
-    
-  #total samples
-  n <- length(y[non_zero])
-  df <- n - length(coef(fit)) + 1
-  mu <- inv_logit(fitted(fit))
-  ssr <- sum(resid(fit)^2)
-  
-  #Weight for residual variance
-  g_prime <- 1/(mu * (1-mu))
-  
-  #denominator for sigma
-  denom <- df*(g_prime^2)
-  
-  #compute sigma_hat
-  sigma_hat <- ssr/denom
-  
-  #return phi
-  phi <- mean((mu*(1-mu))/sigma_hat) - 1
-  phi <- max(phi, 1e-6)
-  
-  # Extract coefficients
+  fit <- lm(y ~ X1 + X2, data = mod_df)
   coef_vec <- coef(fit)
   
-  # Compose result as list of named vectors
+  # Total samples for variance approximation
+  n <- length(y[non_zero])
+  df <- n - length(coef_vec) + 1
+  mu <- inv_logit(fitted(fit))
+  ssr <- sum(resid(fit)^2)
+  g_prime <- 1 / (pmax(mu * (1 - mu), 1e-6))
+  sigma_hat <- ssr / (df * (g_prime^2))
+  
+  phi <- mean((mu * (1 - mu)) / pmax(sigma_hat, 1e-6)) - 1
+  phi <- pmin(pmax(phi, 1e-3), 100) # Keep initial variance scale anchored Safely
+  
+  # DAMP THE INITIAL LAUNCHPAD VALUES
+  # Instead of letting OLS pass huge parameters to optim, cap them to a realistic scale
   theta <- c(
-    beta  = coef_vec[["(Intercept)"]],
-    delta = coef_vec[["X1"]],
-    gamma = coef_vec[["X2"]],
-    kappa = kappa,
+    beta  = as.numeric(coef_vec[["(Intercept)"]]),
+    delta = pmin(pmax(as.numeric(coef_vec[["X1"]]), -2), 5),   # Bounded launch area
+    gamma = pmin(pmax(as.numeric(coef_vec[["X2"]]), -2), 5),   # Bounded launch area
+    kappa = kappa,                                             # Starts exactly at grid step
     phi   = log(phi)
   )
   return(theta)
-  
 }
 
 # --- function for log-likelihood (see Ospina & Ferrari) ---
 loglik_zibeta <- function(y, mu, phi, sum = TRUE, log = TRUE) {
-  
-  # Gather Fixed Terms
-  n <- length(y)
-
-  # Estimate alpha (zero-inflation term)
   alpha <- mean(y == 0)
-
-  # Prepare per-observation log-likelihood vector
-  ll <- numeric(n)
-
-  for(i in 1:length(y)){
-    if(y[i] == 0){
-      ll[i] <- log(alpha)
-    } else {
-      a <- mu[i] * phi
-      b <- (1 - mu[i]) * phi
-      ll[i] <- log(1 - alpha) +
-      (lgamma(phi) - lgamma(a) - lgamma(b) ) +
-      (a - 1) * log(y[i]) +
-      (b - 1) * log(1 - y[i])
-    }
-  }
-
+  
+  # Calculate log-likelihood for all elements simultaneously
+  ll <- ifelse(y == 0, 
+               log(alpha), 
+               log(1 - alpha) + dbeta(y, shape1 = mu * phi, shape2 = (1 - mu) * phi, log = TRUE))
+  
   if (sum) {
     out <- sum(ll)
-    if (!log) out <- exp(out)   # exponentiate after sum
+    if (!log) out <- exp(out)
   } else {
-    out <- if (log) ll else exp(ll)  # return vector
+    out <- if (log) ll else exp(ll)
   }
-  
   return(out)
 }
 
@@ -153,7 +120,6 @@ neg_loglik <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.
   auto <- y_prev * (1-y_prev)
   eta <- beta + delta * auto + gamma * dispersal
   mu  <- inv_logit(eta)
-  mu <- pmin(pmax(mu, 1e-6), 1 - 1e-6)
   phi <- exp(log_phi)
 
   -loglik_zibeta(y_current, mu, phi)
@@ -196,4 +162,129 @@ neg_grad <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01
   
   # Return negative gradients
   -c(beta = d_beta, delta = d_delta, gamma = d_gamma, kappa = d_kappa, phi = d_phi)
+}
+## ---------------------------
+## Script name: 02a_ForwardGradFun.R
+## Purpose: Functions to run gradient descent on natural scale (except log_phi).
+## Author: Trent VanHawkins
+## ---------------------------
+
+logit <- function(p) log(p / (1 - p))
+inv_logit <- function(x) 1 / (1 + exp(-x))
+
+kappa_inner_sum <- function(y_prev, wind_matrix, dist_matrix, d0, kappa, derivative = FALSE) {
+  n <- length(y_prev)
+  dist_shifted <- dist_matrix + d0
+  log_dist <- log(dist_shifted)
+  kernel <- dist_shifted^(-kappa)
+  
+  y_mat <- matrix(y_prev, nrow = n, ncol = n, byrow = TRUE)
+  
+  if(derivative){
+    spread_matrix <- y_mat * wind_matrix * kernel * log_dist
+  } else {
+    spread_matrix <- y_mat * wind_matrix * kernel
+  }
+  diag(spread_matrix) <- 0
+  return(rowSums(spread_matrix))
+}
+
+# --- Initialization (Back to natural scale) ---
+initialize_theta <- function(y, y_prev, wind_mat, dist_mat, d_0, kappa) {
+  non_zero <- which(y > 0)
+  X1 <- y_prev * (1 - y_prev)
+  X2 <- kappa_inner_sum(y_prev = y_prev, wind_matrix = wind_mat, dist_matrix = dist_mat, d0 = d_0, derivative = FALSE, kappa = kappa)
+  
+  mod_df <- data.frame(y = logit(pmin(pmax(y[non_zero], 1e-5), 1 - 1e-5)), X1 = X1[non_zero], X2 = X2[non_zero])
+  fit <- lm(y ~ X1 + X2, data = mod_df)
+  
+  n <- length(y[non_zero])
+  df <- n - length(coef(fit)) + 1
+  mu <- inv_logit(fitted(fit))
+  ssr <- sum(resid(fit)^2)
+  g_prime <- 1 / (pmax(mu * (1 - mu), 1e-6))
+  sigma_hat <- ssr / (df * (g_prime^2))
+  
+  phi <- mean((mu * (1 - mu)) / pmax(sigma_hat, 1e-6)) - 1
+  phi <- max(phi, 1e-6)
+  coef_vec <- coef(fit)
+  
+  theta <- c(
+    beta  = as.numeric(coef_vec[["(Intercept)"]]),
+    delta = as.numeric(coef_vec[["X1"]]),
+    gamma = as.numeric(coef_vec[["X2"]]),
+    kappa = kappa,
+    phi   = log(phi) # Only phi remains on the log scale
+  )
+  return(theta)
+}
+
+# --- Log-likelihood with clipping ---
+loglik_zibeta <- function(y, mu, phi, sum = TRUE, log = TRUE) {
+  alpha <- mean(y == 0)
+  mu <- pmin(pmax(mu, 1e-6), 1 - 1e-6) # Guardrail clipping
+  
+  ll <- ifelse(y == 0, 
+               log(alpha), 
+               log(1 - alpha) + dbeta(y, shape1 = mu * phi, shape2 = (1 - mu) * phi, log = TRUE))
+  if (sum) {
+    out <- sum(ll)
+    if (!log) out <- exp(out)
+  } else {
+    out <- if (log) ll else exp(ll)
+  }
+  return(out)
+}
+
+# --- Negative log-likelihood ---
+neg_loglik <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01) {
+  beta  <- par["beta"]
+  delta <- par["delta"]
+  gamma <- par["gamma"]
+  kappa <- par["kappa"]
+  log_phi <- par["phi"]
+
+  dispersal <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa)
+  auto <- y_prev * (1 - y_prev)
+  eta <- beta + delta * auto + gamma * dispersal
+  mu  <- inv_logit(eta)
+  phi <- exp(log_phi)
+
+  -loglik_zibeta(y_current, mu, phi)
+}
+
+# --- Gradient function (Natural parameters + log-scale phi chain rule) ---
+neg_grad <- function(par, y_current, y_prev, wind_matrix, dist_matrix, d0 = 0.01) {
+  beta  <- par["beta"]
+  delta <- par["delta"]
+  gamma <- par["gamma"]
+  kappa <- par["kappa"]
+  log_phi <- par["phi"]
+  phi <- exp(log_phi)
+
+  non_zero <- which(y_current > 0)
+  dispersal <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa)[non_zero]
+  dispersal_grad <- kappa_inner_sum(y_prev, wind_matrix, dist_matrix, d0, kappa, derivative = TRUE)[non_zero]
+  
+  y_current <- y_current[non_zero]
+  y_prev <- y_prev[non_zero]
+  auto <- y_prev * (1 - y_prev)
+  eta <- beta + delta * auto + gamma * dispersal
+  mu  <- inv_logit(eta)
+  mu  <- pmin(pmax(mu, 1e-6), 1 - 1e-6) # Guardrail clipping
+
+  y_star <- logit(y_current)
+  mu_star <- digamma(mu * phi) - digamma((1 - mu) * phi)
+  weight <- (y_star - mu_star) * mu * (1 - mu)
+  
+  d_beta  <-  phi * sum(weight)
+  d_delta <-  phi * sum(weight * auto)
+  d_gamma <-  phi * sum(weight * dispersal)
+  d_kappa <-  phi * sum(weight * (-gamma) * dispersal_grad)
+  
+  # Natural scale derivative for phi
+  d_phi_natural <- sum((digamma(phi)) - mu * (digamma(mu * phi)) - (1 - mu) * digamma((1 - mu) * phi) + mu * log(y_current) + (1 - mu) * log(1 - y_current))
+  d_log_phi     <- d_phi_natural * phi # Chain rule wrapper for log_phi
+
+  -c(beta = d_beta, delta = d_delta, gamma = d_gamma, kappa = d_kappa, phi = d_log_phi)
 }

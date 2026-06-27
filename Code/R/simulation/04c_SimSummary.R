@@ -61,6 +61,10 @@ sims$n_true_sources <- lengths(sims$true_source)
 
 sims_true <- sims |> filter(n_src == n_true_sources)
 
+sims_true |>
+  ggplot(aes(x = visit, y = config)) +
+  geom_boxplot(fill = )
+
 pred_compare <- sims_true |>
   group_by(config, visit, n_true_sources) |>
   summarise(
@@ -96,13 +100,13 @@ pred_compare |>
   mutate(diff_acc = predicted_acc - naive_acc) |>
   ggplot(aes(x = as.character(visit), y = config, fill = diff_acc)) +
   geom_tile(color = "white") +
-  geom_text(aes(label = round(diff_acc, 3)), size = 3) +
+  geom_text(aes(label = round(diff_acc, 3)), size = 4) +
   scale_fill_gradient2(
     low = "firebrick",
     mid = "white",
     high = "steelblue",
     midpoint = 0,
-    name = "Predicted - Naive\nAccuracy"
+    name = "Predicted - Naive Accuracy"
   ) +
   facet_wrap(~n_true_sources, labeller = label_both) +
   labs(

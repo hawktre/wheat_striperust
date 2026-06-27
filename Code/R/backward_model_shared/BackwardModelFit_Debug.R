@@ -3,6 +3,9 @@
 ## Script name: 03d_BackwardModelFit_Local_DEBUG.R
 ##
 ## Purpose of script: Debug version — test one row at a time
+##                    Updated for log-scale initialization parsing.
+##
+## Author: Trent VanHawkins
 ##
 ## ---------------------------
 options(scipen = 6, digits = 4)
@@ -14,7 +17,7 @@ library(data.table)
 source(here("Code/R/backward_model_shared/03a_BackwardGradFunShared.R"))
 source(here("Code/R/backward_model_shared/03b_BackwardModelFunShared.R"))
 
-## Read in forward fits
+## Read in forward fits and experimental data
 forward <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
 
@@ -68,13 +71,20 @@ DEBUG_ROW <- 1 # <-- change this to any row in combos_backward
 SHOW_COMBO <- TRUE # print the combo being tested
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Step 1: Inspect the combo -----------------------------------------------
+# Step 1: Inspect the combo & process initial values -----------------------
 combo <- combos_backward[DEBUG_ROW, ]
+
+# Extract and structurally transform initial theta parameters to log-scale
+init_pars <- combo$theta[[1]]
+log_pars <- c("delta", "gamma", "kappa", "phi")
+init_pars[log_pars] <- log(pmax(init_pars[log_pars], 1e-5)) 
+names(init_pars) <- c("beta", "log_delta", "log_gamma", "log_kappa", "log_phi")
 
 if (SHOW_COMBO) {
   message(">>> Testing row ", DEBUG_ROW, " of ", nrow(combos_backward))
   print(combo[, c("config", "block", "treat", "visit", "n_src")])
-  message("theta: ", paste(round(combo$theta[[1]], 4), collapse = ", "))
+  message("Forward input theta (natural): ", paste(round(combo$theta[[1]], 4), collapse = ", "))
+  message("EM transformed input (log-scale): ", paste(round(init_pars, 4), collapse = ", "))
 }
 
 
@@ -85,7 +95,7 @@ backward_result <- backward_fit(
   trt = combo$treat,
   vst = combo$visit,
   n_src = combo$n_src,
-  inits = combo$theta[[1]],
+  inits = init_pars, # Pass structural log-parameters
   mod_dat = mod_dat,
   tol = 1e-4,
   max_iter = 200

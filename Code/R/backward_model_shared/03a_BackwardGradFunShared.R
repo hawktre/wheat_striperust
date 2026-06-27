@@ -3,6 +3,8 @@
 ## Script name: 03a_BackwardGradFunShared_Vectorized.R
 ##
 ## Purpose of script: Fit em mod to get source probabilities
+##                    Updated for log-scale parameters (delta, gamma, kappa, phi)
+##                    and zero boundary clipping removals.
 ##
 ## Author: Trent VanHawkins
 ##
@@ -11,7 +13,6 @@
 ## VECTORIZED VERSION - optimized for speed
 ##
 ## ---------------------------
-## ---------------------------
 
 # --- Logit and Inverse Logit ---
 logit <- function(p) log(p / (1 - p))
@@ -19,7 +20,6 @@ inv_logit <- function(x) 1 / (1 + exp(-x))
 
 # Component indicator matrix ----------------------------------------------
 create_component_indicator <- function(group_id, components) {
-  # Creates n x K indicator matrix where C[i,k] = 1 if obs i belongs to component k
   n <- length(group_id)
   K <- ncol(components)
   C <- matrix(0, nrow = n, ncol = K)
@@ -41,9 +41,9 @@ kappa_inner_sum_backward_vectorized <- function(
   derivative = FALSE,
   return_both = FALSE
 ) {
-  # Compute distance kernel once
   dist_shifted <- dist_mat + d0
-  kappa <- par[['kappa']]
+  # Extract kappa from the log-scale parameter
+  kappa <- exp(par[['log_kappa']])
   dist_kernel <- dist_shifted^(-kappa)
 
   # Wind-distance matrix
@@ -78,7 +78,11 @@ get_mu_vectorized <- function(
   component_indicator,
   d0 = 0.01
 ) {
-  # Use the pre-computed component indicator
+  # par maps log-parameters
+  beta  <- par["beta"]
+  delta <- exp(par["log_delta"])
+  gamma <- exp(par["log_gamma"])
+
   dispersal_all <- kappa_inner_sum_backward_vectorized(
     par = par,
     y_prev = y_prev,
@@ -90,59 +94,45 @@ get_mu_vectorized <- function(
   )
 
   auto <- y_prev * (1 - y_prev)
-  eta <- par["beta"] + par["delta"] * auto + par["gamma"] * dispersal_all
-  mu_all <- 1 / (1 + exp(-eta))
-  pmin(pmax(mu_all, 1e-6), 1 - 1e-6)
+  eta <- beta + delta * auto + gamma * dispersal_all
+  
+  # Return pure continuous probabilities without clipping thresholds
+  inv_logit(eta)
 }
 
 # Compute Likelihood ------------------------------------------------------
-# Vectorized likelihood that accepts mu as a matrix
 loglik_zibeta_vectorized <- function(y, mu_mat, phi, sum = TRUE, log = TRUE) {
-  # y: vector of length n
-  # mu_mat: n x K matrix (or vector for single component)
-  # phi: scalar
-
   n <- length(y)
 
-  # Handle both vector and matrix input
   if (is.vector(mu_mat)) {
     mu_mat <- matrix(mu_mat, ncol = 1)
   }
   K <- ncol(mu_mat)
-
-  # Compute alpha once
   alpha <- mean(y == 0)
 
-  # Initialize log-likelihood matrix (n x K)
   ll_mat <- matrix(0, nrow = n, ncol = K)
-
-  # Identify zero observations
   zero_idx <- (y == 0)
   nonzero_idx <- !zero_idx
 
-  # Zero observations - broadcast across all K components
   ll_mat[zero_idx, ] <- log(alpha)
 
-  # Non-zero observations (vectorized across both n and K)
   if (any(nonzero_idx)) {
     y_nz <- y[nonzero_idx]
-    mu_nz <- mu_mat[nonzero_idx, , drop = FALSE] # subset to nonzero rows, keep all K columns
+    mu_nz <- mu_mat[nonzero_idx, , drop = FALSE]
 
-    # Vectorized beta parameters (works element-wise on matrix)
     a <- mu_nz * phi
     b <- (1 - mu_nz) * phi
 
-    # Vectorized log-likelihood computation
     ll_mat[nonzero_idx, ] <- log(1 - alpha) +
       lgamma(phi) -
       lgamma(a) -
       lgamma(b) +
-      (a - 1) * log(y_nz) + # y_nz broadcasts across columns
+      (a - 1) * log(y_nz) + 
       (b - 1) * log(1 - y_nz)
   }
 
   if (sum) {
-    out <- colSums(ll_mat) # sum over observations, return K-length vector
+    out <- colSums(ll_mat)
     if (!log) out <- exp(out)
   } else {
     out <- if (log) ll_mat else exp(ll_mat)
@@ -163,15 +153,13 @@ e_step <- function(
   pi_vec,
   component_indicator = NULL
 ) {
-  phi <- exp(par[['phi']])
+  phi <- exp(par[['log_phi']])
   K <- ncol(components)
 
-  # Use provided component indicator or create if not provided
   if (is.null(component_indicator)) {
     component_indicator <- create_component_indicator(group_id, components)
   }
 
-  # Rest of function unchanged, just pass component_indicator
   mu_all <- get_mu_vectorized(
     par = par,
     y_prev = y_prev,
@@ -180,7 +168,6 @@ e_step <- function(
     component_indicator = component_indicator
   )
 
-  # Vectorized likelihood computation for all components
   lik_mat <- loglik_zibeta_vectorized(
     y_current,
     mu_mat = mu_all,
@@ -189,11 +176,9 @@ e_step <- function(
     log = FALSE
   )
 
-  # Multiply each row (observation) element-wise by prior[k] and get weighted posterior probabilities
   wl_mat <- t(t(lik_mat) * pi_vec)
   p_mat <- wl_mat / rowSums(wl_mat)
 
-  # Compute observed-data ll
   mix_density <- lik_mat %*% pi_vec
   mix_density <- pmax(mix_density, .Machine$double.eps)
   ll_obs <- sum(log(mix_density))
@@ -215,6 +200,7 @@ m_step <- function(
   max_iter = 1000,
   tol = 1e-4
 ) {
+  # Assumes incoming theta_old maps parameters matching the new log layout
   fit <- tryCatch(
     optim(
       par = theta_old,
@@ -259,17 +245,13 @@ m_step_obj <- function(
   components,
   component_indicator = NULL
 ) {
-  # Specify number of components
   K <- ncol(p_mat)
-  # extract phi (still on log scale)
-  phi <- exp(par[["phi"]])
+  phi <- exp(par[["log_phi"]])
 
-  # Use provided component indicator or create if not provided
   if (is.null(component_indicator)) {
     component_indicator <- create_component_indicator(group_id, components)
   }
 
-  # Recompute mu at current parameters - ALL components at once
   mu_all <- get_mu_vectorized(
     par = par,
     y_prev = y_prev,
@@ -278,13 +260,12 @@ m_step_obj <- function(
     component_indicator = component_indicator
   )
 
-  #Compute observed data log-likelihood
   ll_mat <- loglik_zibeta_vectorized(
     y_current,
     mu_mat = mu_all,
     phi = phi,
-    sum = F,
-    log = T
+    sum = FALSE,
+    log = TRUE
   )
   ll <- sum(p_mat * ll_mat)
 
@@ -303,22 +284,20 @@ m_step_grad <- function(
   components,
   component_indicator = NULL
 ) {
-  beta <- par["beta"]
-  delta <- par["delta"]
-  gamma <- par["gamma"]
-  kappa <- par["kappa"]
-  log_phi <- par["phi"]
-  phi <- exp(log_phi)
+  # Pull to natural scale to preserve the structure of your original calculus
+  beta  <- par["beta"]
+  delta <- exp(par["log_delta"])
+  gamma <- exp(par["log_gamma"])
+  kappa <- exp(par["log_kappa"])
+  phi   <- exp(par["log_phi"])
 
   K <- ncol(p_mat)
   non_zero <- which(y_current > 0)
 
-  # Use provided component indicator or create if not provided
   if (is.null(component_indicator)) {
     component_indicator <- create_component_indicator(group_id, components)
   }
 
-  # Get both dispersal value and gradient in one call
   dispersal_combined <- kappa_inner_sum_backward_vectorized(
     par = par,
     y_prev = y_prev,
@@ -331,7 +310,6 @@ m_step_grad <- function(
   dispersal <- dispersal_combined$value
   dispersal_grad <- dispersal_combined$gradient
 
-  # Compute ALL mus at once (n x K)
   mu_mat <- get_mu_vectorized(
     par = par,
     y_prev = y_prev,
@@ -340,44 +318,47 @@ m_step_grad <- function(
     component_indicator = component_indicator
   )
 
-  # Broadcast Y_current and Y_prev to matrices
+  # Broadcast vectors to matrices
   y_current_mat <- matrix(y_current, nrow = length(y_current), ncol = K)
-  y_prev_mat <- matrix(y_prev, nrow = length(y_prev), ncol = K)
+  y_prev_mat    <- matrix(y_prev, nrow = length(y_prev), ncol = K)
 
   # Subset to nonzero responses
-  y_current_nz <- y_current_mat[non_zero, ]
-  auto_mat <- y_prev_mat[non_zero, ] * (1 - y_prev_mat[non_zero, ])
-  dispersal <- dispersal[non_zero, ]
-  dispersal_grad <- dispersal_grad[non_zero, ]
-  p_mat <- p_mat[non_zero, ]
-  mu_mat <- mu_mat[non_zero, ]
+  y_current_nz   <- y_current_mat[non_zero, , drop = FALSE]
+  auto_mat       <- y_prev_mat[non_zero, , drop = FALSE] * (1 - y_prev_mat[non_zero, , drop = FALSE])
+  dispersal      <- dispersal[non_zero, , drop = FALSE]
+  dispersal_grad <- dispersal_grad[non_zero, , drop = FALSE]
+  p_mat          <- p_mat[non_zero, , drop = FALSE]
+  mu_mat         <- mu_mat[non_zero, , drop = FALSE]
 
   # Core derivatives
   y_star <- logit(y_current_nz)
   mu_star <- digamma(mu_mat * phi) - digamma((1 - mu_mat) * phi)
   weight <- phi * (y_star - mu_star) * mu_mat * (1 - mu_mat)
 
-  # Gradients
-  d_beta <- sum(p_mat * weight)
+  # Natural scale gradients
+  d_beta  <- sum(p_mat * weight)
   d_delta <- sum(p_mat * weight * auto_mat)
   d_gamma <- sum(p_mat * weight * dispersal)
   d_kappa <- sum(p_mat * weight * (-gamma) * dispersal_grad)
-
-  # φ gradient (log-scale)
-  d_phi_raw <- p_mat *
+  
+  d_phi_natural <- sum(p_mat *
     (digamma(phi) -
       mu_mat * digamma(mu_mat * phi) -
       (1 - mu_mat) * digamma((1 - mu_mat) * phi) +
       mu_mat * log(y_current_nz) +
-      (1 - mu_mat) * log(1 - y_current_nz))
+      (1 - mu_mat) * log(1 - y_current_nz)))
 
-  d_phi <- sum(phi * d_phi_raw) # chain rule for log(φ)
+  # Apply structural chain rule conversions to log-scale variables
+  d_log_delta <- d_delta * delta
+  d_log_gamma <- d_gamma * gamma
+  d_log_kappa <- d_kappa * kappa
+  d_log_phi   <- d_phi_natural * phi
 
   -c(
-    beta = d_beta,
-    delta = d_delta,
-    gamma = d_gamma,
-    kappa = d_kappa,
-    phi = d_phi
+    beta      = d_beta,
+    log_delta = d_log_delta,
+    log_gamma = d_log_gamma,
+    log_kappa = d_log_kappa,
+    log_phi   = d_log_phi
   )
 }

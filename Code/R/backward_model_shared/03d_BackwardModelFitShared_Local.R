@@ -3,11 +3,11 @@
 ## Script name: 03d_BackwardModelFit_Local.R
 ##
 ## Purpose of script: Fit the backward source-prediction model (local parallel version)
+##                    Updated to convert incoming natural theta to log scale for EM.
 ##
 ## Author: Trent VanHawkins
 ##
 ## Date Created: 2025-08-20
-##
 ##
 ## ---------------------------
 options(scipen = 6, digits = 4)
@@ -18,9 +18,9 @@ library(data.table)
 
 ## Read in necessary functions
 source(here("Code/R/backward_model_shared/03a_BackwardGradFunShared.R"))
-source(here("Code/R/backward_model_shared/03b_BackwardModelFunShared.R"))
+source(here("Code/R/backward_model_shared/03b_BackwardModelFunShared.R")) # Clean source for backward_fit and source_pred
 
-## Read in forward fits
+## Read in forward fits and experimental data
 forward <- readRDS(here("DataProcessed/results/forward_model/forward_fits.rds"))
 mod_dat <- readRDS(here("DataProcessed/experimental/mod_dat_arrays.rds"))
 
@@ -78,13 +78,21 @@ results <- mclapply(
 
     tryCatch(
       {
+        # Extract forward fits (stored on natural scale)
+        init_pars <- combo$theta[[1]]
+        
+        # Safe log-transformation of initial parameters for EM step tracking
+        log_pars <- c("delta", "gamma", "kappa", "phi")
+        init_pars[log_pars] <- log(pmax(init_pars[log_pars], 1e-5)) 
+        names(init_pars) <- c("beta", "log_delta", "log_gamma", "log_kappa", "log_phi")
+
         backward_result <- backward_fit(
           config = combo$config,
           blk = combo$block,
           trt = combo$treat,
           vst = combo$visit,
           n_src = combo$n_src,
-          inits = combo$theta[[1]],
+          inits = init_pars, # Pass structural log parameters
           mod_dat = mod_dat,
           tol = 1e-4,
           max_iter = 200
@@ -153,6 +161,7 @@ if (length(failed) > 0) {
 final_results <- rbindlist(results[!sapply(results, is.null)])
 
 output_dir <- here("DataProcessed/results/backward_model/")
+if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 saveRDS(final_results, file.path(output_dir, "backward_fits_shared.rds"))
 
 message("Done. ", nrow(final_results), " combinations saved successfully.")
