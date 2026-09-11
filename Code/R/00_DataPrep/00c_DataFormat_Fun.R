@@ -53,16 +53,59 @@ get_dir <- function(coords) {
   return(dir.mat)
 }
 
-# Construct Wind Matrix ----------------------------------------------------------
+# Summarize Wind Run ------------------------------------------------------
+summarize_wind_run <- function(first_day, last_day, wind) {
+  cardinal_levels <- c(
+    "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+    "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"
+  )
+
+  # Survey dates do not contain times. Comparing calendar dates makes each
+  # period start-inclusive and end-exclusive without a Date/POSIXct mismatch.
+  wind_interval <- wind %>%
+    filter(
+      as.Date(datetime) >= as.Date(first_day),
+      as.Date(datetime) < as.Date(last_day),
+      !is.na(cardinal),
+      !is.na(speed)
+    )
+
+  if (nrow(wind_interval) == 0) {
+    stop("No wind observations found from ", first_day, " to ", last_day, ".")
+  }
+
+  # Define all 16 transport directions explicitly so directions not observed
+  # during an interval remain in the summary with zero wind run.
+  direction_key <- tibble(
+    cardinal = factor(cardinal_levels, levels = cardinal_levels),
+    cardinal.dir = seq(0, 337.5, by = 22.5) * pi / 180
+  )
+
+  observed_summary <- wind_interval %>%
+    mutate(cardinal = factor(as.character(cardinal), levels = cardinal_levels)) %>%
+    group_by(cardinal) %>%
+    summarise(
+      n_observations = n(),
+      mean_speed = mean(speed),
+      .groups = "drop"
+    )
+
+  direction_key %>%
+    left_join(observed_summary, by = "cardinal") %>%
+    mutate(
+      n_observations = replace_na(n_observations, 0L),
+      mean_speed = replace_na(mean_speed, 0),
+      proportion_time = n_observations / nrow(wind_interval),
+      wind_run = mean_speed * proportion_time
+    )
+}
+
+# Construct Wind Matrix --------------------------------------------------
 get_wind_mat <- function(first_day, last_day, wind, dir.mat){
-  #Subset the wind data to be in the appropriate frame
-  wind.tmp <- wind %>% 
-    filter(datetime >= first_day, datetime < last_day) %>% 
-    group_by(cardinal, cardinal.dir) %>% 
-    summarise(speed = mean(speed), .groups = "drop") 
+  wind.tmp <- summarize_wind_run(first_day, last_day, wind)
   
   wind_angles <- wind.tmp[['cardinal.dir']]
-  wind_speeds <- wind.tmp[['speed']]
+  wind_runs <- wind.tmp[['wind_run']]
   
   #initialize an empty matrix
   wind_projection_matrix <- matrix(0, nrow = nrow(dir.mat), ncol = ncol(dir.mat))
@@ -73,7 +116,7 @@ get_wind_mat <- function(first_day, last_day, wind, dir.mat){
       
       angle_ij <- dir.mat[i, j]
       
-      # Difference between wind direction and direction from i to j
+      # Angular difference between transport direction and source j -> target i.
       angle_diff <- abs(atan2(sin(wind_angles - angle_ij), cos(wind_angles - angle_ij)))
       
       # Select wind vectors within π/2 of the direction from j to i
@@ -81,8 +124,8 @@ get_wind_mat <- function(first_day, last_day, wind, dir.mat){
       
       if (!any(in_cone)) next  # skip if no matching wind bins
       
-      # Step 3: orthogonal projection: speed × cos(angle difference)
-      projections <- wind_speeds[in_cone] * cos(angle_diff[in_cone])
+      # Orthogonally project each eligible directional wind run.
+      projections <- wind_runs[in_cone] * cos(angle_diff[in_cone])
       
       # Step 4: take average projected wind speed
       wind_projection_matrix[i, j] <- mean(projections)

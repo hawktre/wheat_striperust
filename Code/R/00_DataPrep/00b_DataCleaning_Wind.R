@@ -68,15 +68,31 @@ wind_cardinal <- function(direction, n_directions){
   dir_intervals <- findInterval(c(direction, dir_bin_cuts), dir_bin_cuts)
   dir_intervals[dir_intervals == n_directions] <- 0
   
-  cardinal_dir <- head(factor(dir_intervals, labels = dir_labs), -n_directions)
+  cardinal_dir <- head(
+    factor(dir_intervals, levels = 0:(n_directions - 1), labels = dir_labs),
+    -n_directions
+  )
   out <- data.frame("cardinal" = cardinal_dir) %>% 
     left_join(labs_key, by = "cardinal")
   
   return(out)
 }
 
-wind.clean$cardinal <- wind_cardinal(wind.clean$direction, n_directions = 16)[,1]
-wind.clean$cardinal.dir <- wind_cardinal(wind.clean$direction, n_directions = 16)[,2]
+# ATMOS 22 reports the meteorological direction the wind comes FROM. Disease
+# dispersal follows the direction the wind blows TOWARD, so rotate each
+# observation by 180 degrees before assigning it to a directional bin.
+wind.clean <- wind.clean %>%
+  mutate(
+    wind_from_degrees = direction %% 360,
+    wind_to_degrees = (wind_from_degrees + 180) %% 360
+  )
+
+wind_bins <- wind_cardinal(
+  wind.clean$wind_to_degrees,
+  n_directions = 16
+)
+wind.clean$cardinal <- wind_bins[, 1]
+wind.clean$cardinal.dir <- wind_bins[, 2]
 
 #Save the raw wind data
 saveRDS(wind.clean, here("DataProcessed/wind/wind_clean.rds"))

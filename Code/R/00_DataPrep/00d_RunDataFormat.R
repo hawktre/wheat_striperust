@@ -21,13 +21,11 @@ options(scipen = 6, digits = 4)
 library(tidyverse)
 library(here)
 library(sf)
-source(here("Code/01a_DataFormat_Fun.R"))
-source(here("Code/02a_ForwardGradFun.R"))
+source(here("Code/R/00_DataPrep/00c_DataFormat_Fun.R"))
 
 # Read in the data --------------------------------------------------------
 stripe <- readRDS(here("DataProcessed/experimental/stripe_clean.rds"))
 wind <- readRDS(here("DataProcessed/wind/wind_clean.rds"))
-clusters <- readRDS(here("DataProcessed/experimental/clusters.rds"))
 inocs <- readRDS(here("DataProcessed/experimental/inoc_sp.rds"))
 
 # Create intensity array --------------------------------------------------
@@ -62,6 +60,7 @@ survey_periods <- stripe %>%
   select(block, treat, visit, date) %>% 
   distinct() %>% 
   group_by(block, treat) %>% 
+  arrange(as.numeric(as.character(visit)), .by_group = TRUE) %>%
   mutate(date_prev = lag(date)) %>% 
   ungroup() %>% 
   filter(visit != 1)
@@ -100,19 +99,17 @@ for (blk in dimnames(wind_array)$block) {
     for(vst in dimnames(wind_array)$visit){
       first <- survey_periods %>% filter(block == blk, treat == as.numeric(trt), visit == as.numeric(vst)) %>% pull(date_prev)
       last <- survey_periods %>% filter(block == blk, treat == as.numeric(trt), visit == as.numeric(vst)) %>% pull(date)
+      if (length(first) != 1L || length(last) != 1L) {
+        stop(
+          "Expected exactly one study period for block ", blk,
+          ", treatment ", trt, ", visit ", vst, "."
+        )
+      }
       wind_array[,,blk,trt,vst] <- get_wind_mat(first_day = first, last_day = last, wind = wind, dir.mat = dir_mat)
     }
   }
 }
 
-
-# Get Inits ---------------------------------------------------------------
-#Define Parameters
-param_names <- c("beta", "delta", "gamma", "kappa", "phi")
-n_params <- length(param_names)
-
-#Define values of kappa to try
-kappa_try <- seq(0.25,2.5,0.25)
 
 # Assign Groups (For Backward Model) --------------------------------------
 stripe_sp <- stripe %>% select(plant_id, east, north) %>% distinct() %>% arrange(plant_id) %>% st_as_sf(coords = c("east", "north"))

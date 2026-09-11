@@ -1,0 +1,682 @@
+---
+title: "Spread of Wheat Stripe Rust in an Experimental Framework"
+subtitle: "Methods Supplement: Source Detection"
+author:
+  - name: Trent VanHawkins
+    affiliations:
+      - ref: osu
+    degrees: MS
+    corresponding: true
+  - name: Christopher Mundt
+    affiliations:
+      - ref: osu
+    degrees: PhD
+  - name: David Gent
+    affiliations:
+      - ref: usda
+      - ref: osu
+    degrees: PhD
+  - name: Shirshendu Chatterjee
+    affiliations:
+      - ref: nyu
+  - name: Sharmodeep Bhattacharyya
+    affiliations:
+      - ref: osu
+    degrees: PhD
+affiliations:
+  - id: osu
+    name: Oregon State University
+  - id: usda
+    name: U.S. Department of Agriculture
+  - id: nyu
+    name: City University of New York
+format:
+  pdf:
+    geometry: "margin=0.75in"
+    mathspec: true
+    cap-location: bottom
+    tbl-cap-location: bottom
+    header-includes:
+      - \usepackage{fancyhdr, amsthm, amssymb,amsfonts,amsthm, mystyle, amsmath, bbm}
+      - \usepackage{float, tabularx}
+      - \floatplacement{table}{H}
+      - \pagestyle{fancy}
+      - \fancyhead[R]{Source Detection Methods}
+      - \fancyhead[L]{Trent VanHawkins}
+      - \fancyfoot[C]{\thepage}
+page-layout: full
+execute:
+  echo: false
+  message: false
+  warning: false
+references: references.bib
+bibliography: references.bib
+---
+
+# Introduction
+
+Previous reports in this series have derived and documented a model for the aerial dispersal of Stripe Rust (*Puccinia striiformis*) among Wheat plants. In these reports, we explored various model formulations and optimization strategies of a forward model of disease intensity, which we briefly review here in addition to the experimental design.
+
+The ultimate goal of this project is to derive and implement a modeling framework for *source imputation*. Our goal is to use the observed development of disease, spatial relationships among sample locations, and wind movement to predict the source locations where the epidemic began. Here, we propose a latent-variable approach for the structure and optimization of such a model via the Expectation-Maximization (EM) algorithm.
+
+# Modeling Framework
+
+## Choosing an appropriate outcome
+
+In @gent2019, disease severity at yard $i$ was measured as the number of diseased plants at yard $i$ and time $t$. Thus, it could be modeled naturally by a binomial probability model where
+
+$$
+Y_{i,t} \overset{\text{indep.}}{\sim} b(n_{i,t}, p_{i,t}).
+$$
+
+Here, recalling the study design as described in the **Exploratory Data Analysis** report, let us index an individual sample location $i$ at time $t \in \bigpar{1, \ldots, 5}$. Additionally, we denote the experimental block $b \in \bigpar{1, 2, 3, 4}$, with replicates distinguished by the number of inoculation sources $s \in \bigpar{1, 2, 4}$. Recall that disease severity at sample location $i$ was measured via visual estimation as the proportion of infected plant tissue within a $(0.76\text{ m} \times 0.76\text{ m})$ square and was expressed as a percentage. Using this measurement scheme, the positive outcome naturally presents as a continuous measure bounded by $(0,1)$, which is captured by a $\text{Beta}(a,b)$ distribution. That is,
+
+$$
+Y_{i,t,s,b} \overset{\text{indep.}}{\sim} \text{Beta}(a_{i,t,s,b},b_{i,t,s,b}).
+$$
+
+In this supplement, we will drop subscripts for block and treatment ($b$ and $s$) for economy of expression. Under this assumption, the density of a single positive observation of $Y$ at a single time point is given by
+
+$$
+f_Y(y;a,b)=\frac{\Gamma(a+b)}{\Gamma(a)\Gamma(b)}y^{a-1}(1-y)^{b-1}, \qquad 0<y<1.
+$$
+
+It is less intuitive to interpret the shape parameters $a$ and $b$, so they are often reparameterized in terms of the mean and precision of the distribution so that
+
+$$
+\mu=\frac{a}{a+b}, \qquad \phi=a+b
+\quad\Longrightarrow\quad
+a=\mu\phi, \qquad b=\phi(1-\mu).
+$$
+
+Under this parameterization, we have that
+
+$$
+\E{Y}=\mu, \quad 0<\mu<1; \qquad
+\Var{Y}=\frac{\mu(1-\mu)}{1+\phi}, \quad \phi>0.
+$$
+
+That is, for $Y_{i,t}\mid\boldsymbol{x}_{i,t}\overset{\text{indep.}}{\sim}\text{Beta}(\mu_{i,t},\phi_t)$, we estimate a unique mean response $\mu_{i,t}$ for each sample location and time point, while assuming a shared precision parameter $\phi_t$ across locations within a given transition. This is a common modeling assumption in generalized regression frameworks to reduce complexity and avoid overparameterization [@ferrari2004].
+
+## Specifying the mean structure
+
+Following the framework in @gent2019, we model the mean parameter $\mu_{i,t}$ using a nonlinear regression framework. Letting $\eta_{i,t}$ denote our linear predictor of interest, we have under the logit link
+
+$$
+\mu_{i,t}=\operatorname{logit}^{-1}(\eta_{i,t}).
+$$
+
+We model the mean component as
+
+$$
+\eta_{i,t}=\beta_t+\delta_t y_{i,t-1}(1-y_{i,t-1})+
+\gamma_t\sum_{j\ne i}y_{j,t-1}w_{ij,t}(d_{ij}+d_0)^{-\kappa_t}.
+$$ {#eq-meanmod}
+
+Variables, parameter definitions, and interpretations for @eq-meanmod are outlined in @tbl-covars. Note two differences from the formulation proposed by @gent2019:
+
+1. There is no longer a need to scale $y_{j,t-1}$ by sample area because all sample locations have the same size and density of plants.
+
+2. We opt to use the fat-tailed power-law kernel instead of an exponential kernel to model the spatial decay of disease transmission. This reflects the propensity of stripe rust (and other airborne plant pathogens) to spread over long distances. 
+
+::: {#tbl-covars}
+\begin{table}
+    \small
+    \centering
+    \subcaptionbox{Variable definitions for the proposed model.\label{tbl-vars}}{
+        \begin{tabularx}{\textwidth}{lX}
+            \toprule
+            Variable & Description \\
+            \midrule
+            $y_{i,t-1}$ & Proportion of diseased plant tissue at target sample location $i$ at the previous time point. \\
+            $y_{j,t-1}$ & Proportion of diseased plant tissue at potential source sample location $j$ at the previous time point. \\
+            $w_{ij,t}$ & Wind movement projected from source $j$ toward target $i$ during transition $t$. \\
+            $d_{ij}$ & Euclidean distance between sample locations $i$ and $j$. \\
+            $d_0$ & A fixed distance offset used to avoid division by zero. \\
+            \bottomrule
+        \end{tabularx}
+    }
+
+    \vspace{1em}
+
+    \subcaptionbox{Model parameters and interpretations.\label{tbl-params}}{
+        \begin{tabularx}{\textwidth}{lX}
+            \toprule
+            Parameter & Interpretation \\
+            \midrule
+            $\beta_t$ & Baseline log-odds of positive disease severity during transition $t$, after accounting for autoinfection and disease spread. \\
+            $\delta_t$ & Change in log-odds of positive disease severity associated with autoinfection at the target location. \\
+            $\gamma_t$ & Change in log-odds of positive disease severity associated with the distance- and wind-adjusted dispersal contribution from source locations. \\
+            $\kappa_t$ & Nonlinear distance-decay parameter for transition $t$. \\
+            $\phi_t$ & Precision of the conditional Beta distribution for transition $t$. \\
+            \bottomrule
+        \end{tabularx}
+    }
+\end{table}
+
+\small Covariates, parameters, and their interpretations for the proposed model from @eq-meanmod.
+::: 
+
+# Handling Zeros
+
+While the Beta distribution is a natural choice for modeling continuous proportions, it is important to note that its domain excludes zero and one. In our dataset, zero values frequently occur during early transitions when plants have not yet been infected by the fungus. To address this, we adopt a zero-inflated Beta modeling strategy as outlined by @ospina_inflated_2010. Our data do not include observations equal to one, so an additional point mass at one is not required.
+
+Letting $f(y;\mu,\phi)$ denote the density of the reparameterized Beta distribution, the density for a single observation is
+
+$$
+\mathrm{ZIB}(y;\alpha,\mu,\phi)=
+\begin{cases}
+\alpha, & y=0,\\
+(1-\alpha)f(y;\mu,\phi), & y\in(0,1).
+\end{cases}
+$$ {#eq-zibpdf}
+
+The expectation and variance of this mixture distribution are
+
+$$
+\begin{split}
+\E{Y}&=(1-\alpha)\mu,\\
+\Var{Y}&=(1-\alpha)\frac{\mu(1-\mu)}{1+\phi}
++\alpha(1-\alpha)\mu^2.
+\end{split}
+$$ {#eq-zimeanvar}
+
+In some cases, users may wish to model the mixing parameter $\alpha$ separately as a function of covariates. In this work, we adopt a simpler formulation in which we estimate $\alpha_t$ at each transition using the empirical maximum likelihood estimator
+
+$$
+\widehat\alpha_t=\frac{1}{n}\sum_{i=1}^n\indicate{y_{i,t}=0}.
+$$
+
+This approach allows us to optimize the Beta-model parameters using the nonzero observations at each transition while retaining the zero-mass contribution in the full likelihood. Because $\widehat\alpha_t$ is fixed within a transition and does not depend on the candidate source set or optimized parameter vector, the zero-mass component does not influence optimization of the Beta parameters or relative evidence among candidate source sets.
+
+# Handling Wind, Direction, and Distance
+
+The spatial component requires us to
+
+1. construct a distance matrix $\boldsymbol d_{n\times n}$ where each component $d_{ij}$ denotes the distance between sample locations $i$ and $j$; and
+
+2. construct a matrix $\mathbf w_{t,n\times n}$ for each transition, where each component $w_{ij,t}$ is the orthogonal projection of the *amount* of wind moving from source $j$ to target $i$ during the time between surveys $t-1$ and $t$.
+
+## Constructing the distance and bearing matrices
+
+We are provided with the distance of each sample location from the origin of the plot---in meters---in the $x$ and $y$ directions. Given these coordinates, we compute each element $d_{ij}$ as
+
+$$
+d_{ij}=\sqrt{(x_i-x_j)^2+(y_i-y_j)^2}.
+$$
+
+We also compute a direction matrix $\boldsymbol\psi$, where each component $\psi_{ij}$ denotes the bearing from source $j$ to target $i$ in radians:
+
+$$
+\psi_{ij}=\operatorname{atan2}(x_i-x_j,y_i-y_j)\bmod 2\pi.
+$$ {#eq-bearing}
+
+This bearing is measured clockwise from North. Thus, if target $i$ is directly North of source $j$, then $\psi_{ij}=0$; if target $i$ is directly East of source $j$, then $\psi_{ij}=\pi/2$; and so on.
+
+## Constructing the wind projection matrices
+
+We are supplied with wind speed ($\text{m}/\text{s}$) and meteorological wind direction in degrees azimuth for the duration of the study. Meteorological direction describes where the wind originates, so we rotate each observation by $180^\circ$ to obtain the direction toward which inoculum is transported. We then aggregate transport direction into 16 bins:
+
+:::{#tbl-cardinal}
+| Direction | Degrees azimuth | Midpoint ($^\circ$) | Midpoint (rad) |
+|---|---:|---:|---:|
+| N   | $[348.75,360)\cup[0,11.25)$ | 0.0   | 0.00 |
+| NNE | $[11.25,33.75)$              | 22.5  | 0.39 |
+| NE  | $[33.75,56.25)$              | 45.0  | 0.79 |
+| ENE | $[56.25,78.75)$              | 67.5  | 1.18 |
+| E   | $[78.75,101.25)$             | 90.0  | 1.57 |
+| ESE | $[101.25,123.75)$            | 112.5 | 1.96 |
+| SE  | $[123.75,146.25)$            | 135.0 | 2.36 |
+| SSE | $[146.25,168.75)$            | 157.5 | 2.75 |
+| S   | $[168.75,191.25)$            | 180.0 | 3.14 |
+| SSW | $[191.25,213.75)$            | 202.5 | 3.53 |
+| SW  | $[213.75,236.25)$            | 225.0 | 3.93 |
+| WSW | $[236.25,258.75)$            | 247.5 | 4.32 |
+| W   | $[258.75,281.25)$            | 270.0 | 4.71 |
+| WNW | $[281.25,303.75)$            | 292.5 | 5.11 |
+| NW  | $[303.75,326.25)$            | 315.0 | 5.50 |
+| NNW | $[326.25,348.75)$            | 337.5 | 5.89 |
+
+: Directional bins in degrees azimuth and radians, centered on North.
+:::
+
+We then follow the following procedure separately for each study interval:
+
+1. For each direction $k\in\{1,\ldots,16\}$, multiply the average wind speed by the proportion of interval observations assigned to that direction. Denote this direction-specific wind run by
+
+   $$
+   \omega_{k,t}=\overline v_{k,t}\frac{n_{k,t}}{n_t}.
+   $$
+
+   Directions that are not observed during an interval are retained with $\omega_{k,t}=0$.
+
+2. Letting $a_k$ denote the midpoint in radians for wind direction $k$, define its smallest angular difference from the source-to-target bearing $\psi_{ij}$:
+
+   $$
+   \Delta_{ijk}=\left|\operatorname{atan2}
+   \left\{\sin(a_k-\psi_{ij}),\cos(a_k-\psi_{ij})\right\}\right|.
+   $$
+
+   We retain directions within $\pi/2$ of the bearing, so that $\mathcal K_{ij}=\{k:\Delta_{ijk}<\pi/2\}$.
+
+3. Orthogonally project each eligible directional wind run onto the bearing from source $j$ to target $i$:
+
+   $$
+   p_{ijk,t}=\omega_{k,t}\cos(\Delta_{ijk}),
+   \qquad k\in\mathcal K_{ij}.
+   $$
+
+4. Take $w_{ij,t}$ as the average of the eligible orthogonal projections:
+
+   $$
+   w_{ij,t}=\frac{1}{|\mathcal K_{ij}|}
+   \sum_{k\in\mathcal K_{ij}}p_{ijk,t}.
+   $$ {#eq-windprojection}
+
+This procedure produces an asymmetric wind matrix: in general, wind movement from $j$ toward $i$ need not equal wind movement from $i$ toward $j$.
+
+# Forward-Model Estimation
+
+## Likelihood
+
+Under the mean-precision parameterization, the Beta density of a single positive observation is
+
+$$
+f(y_{i,t}\mid\mu_{i,t},\phi_t)=
+\frac{\Gamma(\phi_t)}
+{\Gamma(\mu_{i,t}\phi_t)\Gamma\{(1-\mu_{i,t})\phi_t\}}
+y_{i,t}^{\mu_{i,t}\phi_t-1}
+(1-y_{i,t})^{(1-\mu_{i,t})\phi_t-1}.
+$$ {#eq-betapdf}
+
+The log-likelihood contribution for a single observation is therefore
+
+$$
+\ell_{i,t}(\boldsymbol\theta_t)=
+\begin{cases}
+\log\widehat\alpha_t, & y_{i,t}=0,\\
+\log(1-\widehat\alpha_t)+\log f(y_{i,t}\mid\mu_{i,t},\phi_t),
+& 0<y_{i,t}<1,
+\end{cases}
+$$ {#eq-zibloglik}
+
+where
+
+$$
+\boldsymbol\theta_t=
+\begin{bmatrix}
+\beta_t&\delta_t&\gamma_t&\log\kappa_t&\log\phi_t
+\end{bmatrix}^{\mathsf T}.
+$$
+
+The transformations $\kappa_t=\exp(\{\log\kappa_t\})$ and $\phi_t=\exp(\{\log\phi_t\})$ enforce positivity. The parameters $\beta_t$, $\delta_t$, and $\gamma_t$ are unconstrained.
+
+For the full forward model, every location $j\ne i$ is allowed to contribute to the spatial term. We estimate $\boldsymbol\theta_t$ separately for every transition and block-by-treatment experiment by minimizing
+
+$$
+-\ell_t(\boldsymbol\theta_t)
+=-\sum_{i=1}^n\ell_{i,t}(\boldsymbol\theta_t)
+$$
+
+using the quasi-Newton method with gradient-based Hessian approximation, as implemented by `optim()` with `method = "BFGS"` in `R`.
+
+## Score function
+
+Let $y_{i,t}^*=\log\{y_{i,t}/(1-y_{i,t})\}$ and
+
+$$
+\mu_{i,t}^*=\psi(\mu_{i,t}\phi_t)-
+\psi\{(1-\mu_{i,t})\phi_t\},
+$$
+
+where $\psi(\cdot)$ denotes the digamma function. For a positive observation,
+
+$$
+\frac{\partial\ell_{i,t}}{\partial\eta_{i,t}}
+=\phi_t(y_{i,t}^*-\mu_{i,t}^*)
+\mu_{i,t}(1-\mu_{i,t}).
+$$ {#eq-scoreeta}
+
+Define
+
+$$
+D_{i,t}(\kappa_t)=\sum_{j\ne i}
+y_{j,t-1}w_{ij,t}(d_{ij}+d_0)^{-\kappa_t}.
+$$
+
+The derivatives of the linear predictor are
+
+$$
+\begin{split}
+\frac{\partial\eta_{i,t}}{\partial\beta_t}&=1,\\
+\frac{\partial\eta_{i,t}}{\partial\delta_t}
+&=y_{i,t-1}(1-y_{i,t-1}),\\
+\frac{\partial\eta_{i,t}}{\partial\gamma_t}
+&=D_{i,t}(\kappa_t),\\
+\frac{\partial\eta_{i,t}}{\partial\log\kappa_t}
+&=-\gamma_t\kappa_t\sum_{j\ne i}
+y_{j,t-1}w_{ij,t}(d_{ij}+d_0)^{-\kappa_t}
+\log(d_{ij}+d_0).
+\end{split}
+$$ {#eq-mean-gradients}
+
+The score for $\log\phi_t$ is obtained from
+
+$$
+\begin{split}
+\frac{\partial\ell_{i,t}}{\partial\phi_t}
+=\;&\psi(\phi_t)-\mu_{i,t}\psi(\mu_{i,t}\phi_t)
+-(1-\mu_{i,t})\psi\{(1-\mu_{i,t})\phi_t\}\\
+&+\mu_{i,t}\log y_{i,t}+(1-\mu_{i,t})\log(1-y_{i,t}),
+\end{split}
+$$
+
+and the chain rule
+
+$$
+\frac{\partial\ell_{i,t}}{\partial\log\phi_t}
+=\phi_t\frac{\partial\ell_{i,t}}{\partial\phi_t}.
+$$
+
+Zero observations have zero derivative with respect to $\boldsymbol\theta_t$ because $\widehat\alpha_t$ is treated as fixed. The optimization routine minimizes the negative log-likelihood, so the implemented gradient is the negative of the corresponding score vector.
+
+## Selecting initial values
+
+To improve convergence and avoid poor local optima, it is important to specify reasonable starting values for the parameter vector. Following the recommendation of @ferrari2004, we adopt a method-of-moments approach that uses Ordinary Least Squares (OLS) estimates obtained from a linear approximation to the transformed response and then estimates $\phi_t$ from the residual variance.
+
+For each proposed initial value $\kappa^{(0)}$ and transition $t$, we:
+
+1. compute the autoinfection and full-forward dispersal covariates
+
+   $$
+   X_{i,1}=y_{i,t-1}(1-y_{i,t-1}), \qquad
+   X_{i,2}=\sum_{j\ne i}y_{j,t-1}w_{ij,t}
+   (d_{ij}+d_0)^{-\kappa^{(0)}};
+   $$
+
+2. regress the logit-transformed positive responses on $X_{i,1}$ and $X_{i,2}$ to obtain initial values for $\beta_t$, $\delta_t$, and $\gamma_t$;
+
+3. compute $\widetilde\mu_{i,t}=\operatorname{logit}^{-1}(\widehat\eta_{i,t})$; and
+
+4. obtain a moment-based initial value of $\phi_t$ from the residual variance on the response scale, using
+
+   $$
+   \phi_t^{(0)}=
+   \frac{\operatorname{mean}\{\widetilde\mu_{i,t}
+   (1-\widetilde\mu_{i,t})\}}
+   {\widehat{\operatorname{Var}}(Y_{i,t}-\widetilde\mu_{i,t})}-1,
+   $$
+
+   truncated below at a small positive value.
+
+We repeat the full-forward optimization over a grid of possible initial values for $\kappa$. For each transition, the finite converged fit with the smallest negative log-likelihood is retained. These transition-specific estimates provide the warm-start parameter matrix for the primary source-detection EM algorithm.
+
+# Source-Detection Model
+
+## Candidate spatial resolutions and source sets
+
+The $8\times8$ experimental lattice can be represented at five spatial resolutions: 4 cells, 8 horizontal cells, 8 vertical cells, 16 cells, or 64 individual plants. Let $g_q(j)$ map plant $j$ to its spatial group at resolution $q$, and let $K_q$ denote the total number of groups at that resolution.
+
+```{r}
+#| label: fig-sourcegroup
+#| fig-align: center
+#| fig-cap: "Candidate spatial resolutions considered for source detection. Labels identify the candidate source groups at each resolution."
+#| fig-width: 9
+#| cache: true
+
+library(tidyverse)
+library(here)
+library(sf)
+
+clusters <- readRDS(here("DataProcessed", "experimental", "grids_sp.rds"))
+
+plant_grid <- bind_rows(
+  clusters$`4`$grid,
+  clusters$`8h`$grid,
+  clusters$`8v`$grid,
+  clusters$`16`$grid,
+  clusters$`64`$grid
+) |>
+  mutate(
+    resolution = case_when(
+      name == "K = 4" ~ "4 cells",
+      name == "K = 8 (Horizontal)" ~ "8 horizontal cells",
+      name == "K = 8 (Vertical)" ~ "8 vertical cells",
+      name == "K = 16" ~ "16 cells",
+      name == "K = 64" ~ "64 plants"
+    ),
+    resolution = factor(
+      resolution,
+      levels = c(
+        "4 cells", "8 horizontal cells", "8 vertical cells",
+        "16 cells", "64 plants"
+      )
+    )
+  )
+
+ggplot(plant_grid) +
+  geom_sf(fill = "transparent") +
+  geom_sf_text(aes(label = grid_id), size = 2) +
+  facet_wrap(~resolution, nrow = 1) +
+  labs(x = "E", y = "N") +
+  theme_classic()
+```
+
+Suppose the treatment contains $r$ inoculated plants. At a particular resolution, two inoculated plants may occupy the same spatial group. Consequently, the number of source groups used in the analysis is the number of distinct groups occupied by the known inoculated plants, rather than necessarily $r$. The known source identities are used only to determine this number and to evaluate predictive accuracy; they do not enter the likelihood or EM updates.
+
+Let $m$ denote the known number of distinct source groups at a given spatial
+resolution. The candidate space is
+
+$$
+\mathcal C_{q,m}=\left\{c:c\subseteq\{1,\ldots,K_q\},
+\ |c|=m\right\},
+$$
+
+which contains $\binom{K_q}{m}$ unordered candidate source sets. The 4-, 8-, and 16-cell resolutions are used for both single- and multi-source inference. To control combinatorial growth, the 64-plant resolution is used only for one-source inference.
+
+## Candidate-specific dispersal term
+
+The latent state is one candidate source set $C\in\mathcal C_{q,m}$. For candidate set $c$, only plants belonging to its source groups contribute to dispersal. The candidate-specific dispersal covariate is
+
+$$
+D_{i,t}^{(c)}(\kappa_t)=
+\sum_{j\ne i}\indicate{g_q(j)\in c}\,
+y_{j,t-1}w_{ij,t}(d_{ij}+d_0)^{-\kappa_t}.
+$$ {#eq-candidate-dispersal}
+
+The corresponding conditional mean is
+
+$$
+\begin{split}
+\eta_{i,t}^{(c)}
+&=\beta_t+\delta_t y_{i,t-1}(1-y_{i,t-1})
++\gamma_tD_{i,t}^{(c)}(\kappa_t),\\
+\mu_{i,t}^{(c)}&=\operatorname{logit}^{-1}
+\{\eta_{i,t}^{(c)}\}.
+\end{split}
+$$ {#eq-candidate-mean}
+
+Self-transmission is excluded, but the autoinfection term remains present for every target. Importantly, there is one parameter vector $\boldsymbol\theta_t$ for transition $t$ shared across every candidate source set. Candidate-specific parameter vectors are not used in the primary analysis.
+
+## Complete-data formulation
+
+Let $Z_c=\indicate{C=c}$, so that exactly one $Z_c$ equals one for a fitted study window. The source set is therefore persistent across all transitions included in that fit. This differs from assigning a separate latent transmitter to each target observation.
+
+For candidate $c$ and transition $t$, define
+
+$$
+\ell_{c,t}(\boldsymbol\theta_t)
+=\sum_{i=1}^n\ell_{i,t}^{(c)}(\boldsymbol\theta_t),
+$$
+
+where $\ell_{i,t}^{(c)}$ is the ZIB contribution in @eq-zibloglik evaluated using $\mu_{i,t}^{(c)}$. For a set of included transitions $\mathcal T$, the candidate likelihood is
+
+$$
+L_c(\boldsymbol\Theta;\mathcal T)
+=\exp\left\{\sum_{t\in\mathcal T}
+\ell_{c,t}(\boldsymbol\theta_t)\right\},
+$$
+
+where $\boldsymbol\Theta=\{\boldsymbol\theta_t:t\in\mathcal T\}$. We use a fixed uniform prior over candidate sets,
+
+$$
+\pi_c=P(C=c)=\frac{1}{|\mathcal C_{q,m}|}.
+$$
+
+Because the prior is fixed and uniform, it is not updated during EM.
+
+## Expectation step
+
+At EM iteration $h$, the posterior responsibility of candidate source set $c$ is
+
+$$
+r_c^{(h)}
+=P(C=c\mid\mathbf Y,\boldsymbol\Theta^{(h)})
+=\frac{\pi_c\exp\left\{\sum_{t\in\mathcal T}
+\ell_{c,t}(\boldsymbol\theta_t^{(h)})\right\}}
+{\sum_{c'\in\mathcal C_{q,m}}\pi_{c'}
+\exp\left\{\sum_{t\in\mathcal T}
+\ell_{c',t}(\boldsymbol\theta_t^{(h)})\right\}}.
+$$ {#eq-responsibility}
+
+Responsibilities are evaluated on the log scale using the log-sum-exp identity for numerical stability. Each fit produces a single responsibility vector over candidate source sets. The responsibilities sum to one over $c\in\mathcal C_{q,m}$.
+
+## Maximization step
+
+Conditional on the responsibilities from the E-step, the expected complete-data log-likelihood is
+
+$$
+Q(\boldsymbol\Theta\mid\boldsymbol\Theta^{(h)})
+=\sum_{c\in\mathcal C_{q,m}}r_c^{(h)}
+\left[\log\pi_c+
+\sum_{t\in\mathcal T}\ell_{c,t}(\boldsymbol\theta_t)\right].
+$$ {#eq-qfunction}
+
+The prior term is constant with respect to $\boldsymbol\Theta$. Because every transition has its own parameter vector, the M-step separates across transitions:
+
+$$
+\boldsymbol\theta_t^{(h+1)}
+=\arg\max_{\boldsymbol\theta_t}
+\sum_{c\in\mathcal C_{q,m}}r_c^{(h)}
+\ell_{c,t}(\boldsymbol\theta_t),
+\qquad t\in\mathcal T.
+$$ {#eq-mstep}
+
+Thus, one BFGS optimization is performed for each included transition during every EM iteration. These optimizations all use the same responsibility vector from the preceding E-step. The score equations are the responsibility-weighted versions of the forward-model scores. For example,
+
+$$
+\frac{\partial Q_t}{\partial\beta_t}
+=\sum_{c\in\mathcal C_{q,m}}r_c^{(h)}
+\sum_{i:y_{i,t}>0}
+\frac{\partial\ell_{i,t}^{(c)}}{\partial\eta_{i,t}^{(c)}},
+$$
+
+with analogous expressions for $\delta_t$, $\gamma_t$, $\log\kappa_t$, and $\log\phi_t$. Candidate-specific dispersal terms from @eq-candidate-dispersal replace the full-forward dispersal term in @eq-mean-gradients.
+
+After each M-step, we recompute candidate likelihoods, responsibilities, and the observed-data log-likelihood
+
+$$
+\ell_{\mathrm{obs}}(\boldsymbol\Theta)
+=\log\sum_{c\in\mathcal C_{q,m}}
+\pi_c\exp\left\{\sum_{t\in\mathcal T}
+\ell_{c,t}(\boldsymbol\theta_t)\right\}.
+$$ {#eq-observed-loglik}
+
+Iterations continue until both the absolute change in observed-data log-likelihood and the maximum change in candidate responsibility fall below prespecified tolerances, provided every transition-specific BFGS optimization reports convergence. We additionally monitor whether the observed-data log-likelihood is nondecreasing, as expected under EM.
+
+# Temporal Analysis Scopes
+
+We use the same likelihood, E-step, and M-step under three temporal analysis scopes. Only the transitions included in $\mathcal T$ change.
+
+## Independent-transition fits
+
+For the transition ending at visit $v$, we set $\mathcal T=\{v\}$. The EM model is fit using only disease and wind information for the interval from visit $v-1$ to visit $v$. These fits assess source identifiability during individual periods and do not borrow information from earlier or later transitions.
+
+## Cumulative fits
+
+For the cumulative fit through visit $v$, we set
+
+$$
+\mathcal T_v=\{2,3,\ldots,v\}.
+$$
+
+The EM algorithm is refit at every endpoint. Therefore, the visit-2 fit uses only the first transition, the visit-3 fit uses the first two transitions, and so on. These fits address what source prediction could be made using all information available by a particular point in the study without future-data leakage.
+
+## Whole-study fits
+
+The final cumulative endpoint includes all observed transitions and is the whole-study fit. It provides the primary prediction of the persistent source set over the course of the study. It is not a separate model from the cumulative analysis; rather, it is the final cumulative refit.
+
+For descriptive diagnostics, the final whole-study parameter estimates can also be used to decompose candidate evidence by transition or by cumulative subsets of transitions. These retrospective summaries do not represent independently refitted models and are distinguished from the independent-transition and cumulative-refit results.
+
+# Prediction and Accuracy
+
+## Source prediction with a known source count
+
+The number of source groups is treated as known and fixed at each spatial
+resolution. The analysis therefore evaluates source localization conditional
+on the correct source count rather than attempting to estimate the number of
+sources.
+
+For any fitted analysis window, the predicted source set is the candidate with the largest final posterior responsibility:
+
+$$
+\widehat c=\arg\max_{c\in\mathcal C_{q,m}}r_c.
+$$
+
+## Exact accuracy
+
+For equal-sized predicted and true sets, exact accuracy is the proportion of true source groups included in the predicted set:
+
+$$
+A_{\mathrm{exact}}
+=\frac{|\widehat c\cap c^*|}{m},
+$$
+
+where $c^*$ denotes the true source set at the selected spatial resolution.
+
+## Distance-weighted accuracy
+
+Exact accuracy does not distinguish between predictions that narrowly miss a true source and predictions on the opposite side of the study area. To remedy this limitation, we use a distance-weighted accuracy score. For multi-source predictions, predicted and true source-group centroids are first paired to minimize the total Euclidean distance. We obtain this optimal one-to-one assignment using the Hungarian algorithm as implemented in the `RcppHungarian` package.
+
+For an assigned true source group $g^*$ and predicted source group $\widehat g$, let $d_{\mathrm{pred}}$ denote the Euclidean distance between their centroids. Let $d_{\max}(g^*)$ denote the distance from the true source centroid to the furthest candidate-group centroid at the same spatial resolution. We define the spatial accuracy score for an individual assigned prediction as
+
+$$
+e(\widehat g,g^*)
+=1-\frac{d_{\mathrm{pred}}(\widehat g,g^*)}
+{d_{\max}(g^*)}.
+$$ {#eq-dist-acc}
+
+In general, $0\le e\le1$, so the metric can be interpreted similarly to standard accuracy while simultaneously accounting for the magnitude of spatial error. The distance-weighted accuracy for a multi-source prediction is the mean of $e$ over the $m$ optimally assigned source pairs. We report both exact and distance-weighted accuracy where applicable.
+
+## Naive maximum-severity prediction
+
+We compare the source-detection model with a simple prediction based on endpoint disease severity. For a fitted analysis window ending at visit $v$, define the severity of group $g$ as
+
+$$
+M_{g,v}=\max_{i:g_q(i)=g}y_{i,v}.
+$$
+
+For the known source count $m$, the naive prediction is the set of $m$ groups with the largest values of $M_{g,v}$. Group ID resolves exact ties deterministically. This same endpoint rule is used for independent-transition, cumulative, and whole-study fits. Consequently, the cumulative source-detection model uses the entire observed trajectory through visit $v$, whereas the naive prediction uses only severity observed at the endpoint. Model-based and naive predictions are evaluated using the same exact and distance-weighted accuracy definitions.
+
+# Primary Implementation
+
+The primary pipeline proceeds as follows for each block-by-treatment experiment:
+
+1. Fit the full forward model independently for every transition using method-of-moments starting values over a grid of initial $\kappa$ values.
+
+2. Retain the best finite converged forward fit for each transition and use the resulting transition-specific parameter matrix to initialize source-detection EM.
+
+3. At each spatial resolution, enumerate every unordered source-set candidate using the known number of source groups.
+
+4. Fit independent-transition EM models and cumulative EM models at every endpoint. The final cumulative model is retained as the whole-study analysis.
+
+5. Construct endpoint maximum-severity predictions and evaluate them using the same accuracy metrics as the model-based predictions.
+
+6. Save complete candidate posterior distributions, fitted parameters, EM histories, convergence diagnostics, source assignments, and exact and distance-weighted accuracy.
+
+The outer block-by-treatment-by-resolution-by-analysis-window grid is parallelized. Within a single EM fit, transition-specific M-step optimizations are performed sequentially to avoid nested parallelism. The same objective and analytic gradient are used for the forward model and all source-detection fit scopes, with responsibilities and candidate-specific dispersal incorporated during the EM M-step.
+
+# References
+
+::: {#refs}
+:::
