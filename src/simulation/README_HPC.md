@@ -8,21 +8,22 @@ block-treatment scenarios within one simulation run sequentially; forward
 transitions and backward fits within a scenario also remain sequential.
 Threaded math libraries are restricted to one thread.
 
-The default Slurm request is 10 CPU cores, 10 GB RAM, and 2 hours per job.
+The default Slurm request is 10 CPU cores, 5 GB RAM, and 2 hours per job.
 Five local replicates required an estimated 3.3--5.7 minutes with eight workers,
 and a production-style local run required 5.6 minutes when parallelism was
 within a simulation. The cross-simulation worker pool avoids waiting at every
 simulation boundary; the two-hour request allows for slower nodes, long EM
-fits, and Monte Carlo runtime variation.
+fits, and Monte Carlo runtime variation. A full 10-simulation HPC pilot used
+2.08 GB of resident memory, so 5 GB retains more than twofold headroom.
 
 The submission helper submits all 100 jobs in one array. Its third argument
-throttles how many jobs may run concurrently. With 10 cores and 10 GB per job,
-the partition limits would permit at most 102 simultaneous jobs by CPU and 75
+throttles how many jobs may run concurrently. With 10 cores and 5 GB per job,
+the partition limits would permit at most 102 simultaneous jobs by CPU and 150
 by memory. The helper defaults to 60, which requests at most 600 cores and
-600 GB. Reduce this throttle when other jobs are using the same per-user
+300 GB. Reduce this throttle when other jobs are using the same per-user
 allocation.
 
-A complete 100-job array reserves at most 83.3 CPU-days and 83.3 GB-days when
+A complete 100-job array reserves at most 83.3 CPU-days and 41.7 GB-days when
 the full two-hour requests are charged, below the documented 1,024 CPU-day and
 3,072 GB-day limits.
 

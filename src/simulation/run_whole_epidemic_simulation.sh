@@ -4,7 +4,7 @@
 #SBATCH --output=output/simulation/whole_epidemic_study/hpc/logs/simulation_%A_%a.out
 #SBATCH --error=output/simulation/whole_epidemic_study/hpc/logs/simulation_%A_%a.err
 #SBATCH --cpus-per-task=10
-#SBATCH --mem=10G
+#SBATCH --mem=5G
 #SBATCH --time=02:00:00
 
 set -euo pipefail
@@ -19,16 +19,20 @@ echo "Batch: ${SLURM_ARRAY_TASK_ID}"
 echo "Cores: ${SLURM_CPUS_PER_TASK}"
 echo "Started: $(date)"
 
-# Each R process is single-threaded. Parallelism is across complete simulation
-# replicates so a free core can immediately begin the next simulation.
+module load R
+export R_LIBS="${HOME}/R_libs/4.4"
+
+# Each R process is single-threaded. Set these after loading the module so its
+# environment cannot restore a larger thread count. Parallelism is only across
+# complete simulation replicates in the xargs worker pool below.
 export OMP_NUM_THREADS=1
+export OMP_THREAD_LIMIT=1
 export OPENBLAS_NUM_THREADS=1
+export BLIS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 export VECLIB_MAXIMUM_THREADS=1
-
-export R_LIBS="${HOME}/R_libs/4.4"
-module load R
+export RCPP_PARALLEL_NUM_THREADS=1
 
 simulations_per_job="${SIMULATIONS_PER_JOB:-10}"
 if ! [[ "${simulations_per_job}" =~ ^[0-9]+$ ]] ||
