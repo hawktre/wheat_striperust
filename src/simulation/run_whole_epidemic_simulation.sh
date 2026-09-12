@@ -3,8 +3,8 @@
 #SBATCH --partition=share
 #SBATCH --output=output/simulation/whole_epidemic_study/hpc/logs/simulation_%A_%a.out
 #SBATCH --error=output/simulation/whole_epidemic_study/hpc/logs/simulation_%A_%a.err
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=12G
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=10G
 #SBATCH --time=02:00:00
 
 set -euo pipefail
@@ -19,8 +19,8 @@ echo "Batch: ${SLURM_ARRAY_TASK_ID}"
 echo "Cores: ${SLURM_CPUS_PER_TASK}"
 echo "Started: $(date)"
 
-# Each R worker is single-threaded; up to eight of the twelve complete
-# block-treatment scenarios run in parallel inside the array task.
+# Each R process is single-threaded. Parallelism is across complete simulation
+# replicates so a free core can immediately begin the next simulation.
 export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
@@ -41,16 +41,12 @@ last_simulation=$(( first_simulation + simulations_per_job - 1 ))
 batch_status=0
 
 echo "Simulations: ${first_simulation}-${last_simulation}"
-for ((
-  simulation_id = first_simulation;
-  simulation_id <= last_simulation;
-  simulation_id++
-)); do
-  if ! Rscript --vanilla \
-    src/simulation/run_simulation_replicate_hpc.R "${simulation_id}"; then
-    batch_status=1
-  fi
-done
+if ! seq "${first_simulation}" "${last_simulation}" |
+  xargs -n 1 -P "${SLURM_CPUS_PER_TASK}" \
+    env SLURM_CPUS_PER_TASK=1 \
+    Rscript --vanilla src/simulation/run_simulation_replicate_hpc.R; then
+  batch_status=1
+fi
 
 echo "Finished: $(date)"
 exit "${batch_status}"
