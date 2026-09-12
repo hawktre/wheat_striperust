@@ -1,33 +1,63 @@
 # HPC protocol for the whole-epidemic simulation
 
-One Slurm array task runs one complete Monte Carlo replicate across all four
-blocks and all three treatments. Eight block-treatment scenarios run in
-parallel within a task. Forward transitions and backward fits within a
-scenario remain sequential, and threaded math libraries are restricted to one
-thread to prevent oversubscription.
+The study uses 100 Slurm array jobs with 10 Monte Carlo simulations per job,
+for 1,000 simulations total. The 10 simulations run sequentially within each
+job. Within one simulation, up to eight of the twelve block-treatment scenarios
+run in parallel. Forward transitions and backward fits within a scenario remain
+sequential, and threaded math libraries are restricted to one thread.
 
-The default Slurm request is 8 CPU cores, 20 GB RAM, and 2 hours per task. The
-submission helper defaults to 12 concurrent tasks, for a maximum request of 96
-cores and 240 GB. These values deliberately remain well below the `share`
-partition limits.
+The default Slurm request is 8 CPU cores, 12 GB RAM, and 2 hours per job.
+Five local replicates required an estimated 3.3--5.7 minutes with eight workers,
+and a production-style local run required 5.6 minutes. Ten simulations should
+therefore take about one hour on comparable hardware; the two-hour request
+allows for slower nodes and Monte Carlo runtime variation.
 
-Submit a short pilot with:
+The submission helper submits all 100 jobs in one array. Its third argument
+throttles how many jobs may run concurrently. With 8 cores and 12 GB per job,
+the partition's 1,024-core limit would permit 128 simultaneous jobs, but the
+750-GB RAM limit permits only 62. The helper therefore defaults to 60,
+which requests at most 480 cores and 720 GB and leaves 30 GB of memory
+headroom. Reduce this throttle when other jobs are using the same per-user
+allocation.
+
+A complete 100-job array reserves at most 66.7 CPU-days and 100 GB-days when
+the full two-hour requests are charged, below the documented 1,024 CPU-day and
+3,072 GB-day limits.
+
+The cluster's effective limits may also depend on the user's account and QOS.
+They can be rechecked on the login node with:
 
 ```bash
-bash src/simulation/submit_whole_epidemic_simulations.sh 1 10 4
+scontrol show partition share
+scontrol show config | grep MaxArraySize
+sacctmgr show assoc where user="$USER" format=User,Account,Partition,QOS,MaxJobs,MaxSubmit
+sacctmgr show qos format=Name,MaxJobsPU,MaxSubmitJobsPU,MaxTRESPU
 ```
 
-After checking runtimes and memory use, submit simulations 11 through 1000:
+Submit two pilot jobs containing simulations 1--20 with:
 
 ```bash
-bash src/simulation/submit_whole_epidemic_simulations.sh 11 1000 12
+bash src/simulation/submit_whole_epidemic_simulations.sh 1 2 2
 ```
 
-A task writes exactly one atomic RDS file. A result enters `complete/` only if
+After checking runtimes and memory use, submit the remaining 98 jobs:
+
+```bash
+bash src/simulation/submit_whole_epidemic_simulations.sh 3 100 60
+```
+
+Each simulation writes exactly one atomic RDS file. A result enters `complete/` only if
 all 12 block-treatment scenarios, 48 forward transitions, and 416 backward
-fits are returned and all required optimizers converge. Otherwise, the entire
-replicate is written to `failed/` and the Slurm task exits unsuccessfully. No
-partial replicate is included in combined scientific results.
+fits are returned, every forward optimizer converges, every backward EM fit
+converges, and every backward fit has a nondecreasing observed likelihood.
+Otherwise, the entire replicate is written to `failed/` and the Slurm task
+exits unsuccessfully. No partial replicate is included in combined scientific
+results.
+
+An intermediate BFGS call that reports a nonzero code is retained in
+`any_m_step_failure` as a diagnostic, but does not invalidate a fit when later
+M-steps and the overall EM algorithm converge monotonically. Requiring no
+transient BFGS codes would reject all five completed local pilot replicates.
 
 Hessian invertibility is recorded as a diagnostic but is not a completion
 requirement. This lets the study quantify weak identifiability without silently
@@ -42,6 +72,13 @@ Combine 1,000 complete results only after all replacements are available:
 
 ```bash
 Rscript --vanilla src/simulation/combine_hpc_simulations.R 1000
+```
+
+After the pilot array finishes, inspect resource use with (replace the job ID):
+
+```bash
+sacct -j JOB_ID --units=G \
+  --format=JobID,State,Elapsed,AllocCPUS,ReqMem,MaxRSS,ExitCode
 ```
 
 The combine step requires exactly the requested number of complete replicate

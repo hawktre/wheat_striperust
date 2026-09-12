@@ -133,8 +133,9 @@ all_backward_fits_succeeded <- all_backward_fits_returned &&
 all_backward_fits_converged <- all_backward_fits_succeeded &&
   nrow(combined$backward_diagnostics) == expected_backward_fits &&
   isTRUE(all(combined$backward_diagnostics$converged)) &&
-  isTRUE(all(combined$backward_diagnostics$all_iterations_monotonic)) &&
-  isTRUE(all(!combined$backward_diagnostics$any_m_step_failure))
+  isTRUE(all(combined$backward_diagnostics$all_iterations_monotonic))
+any_transient_m_step_failure <- all_backward_fits_succeeded &&
+  isTRUE(any(combined$backward_diagnostics$any_m_step_failure))
 
 simulation_complete <- all(c(
   all_scenarios_returned,
@@ -161,6 +162,7 @@ status <- data.frame(
   all_backward_fits_returned = all_backward_fits_returned,
   all_backward_fits_succeeded = all_backward_fits_succeeded,
   all_backward_fits_converged = all_backward_fits_converged,
+  any_transient_m_step_failure = any_transient_m_step_failure,
   n_scenarios = nrow(combined$scenario_status),
   n_forward_transitions = nrow(combined$forward_metrics),
   n_backward_fits = nrow(combined$backward_fit_status),

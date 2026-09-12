@@ -301,7 +301,7 @@ for (config in unique(edges$configuration)) {
 
 spat_plots[["A1_stripe_4"]]
 
-ggsave("A1_Results.png", path = here("Reports/CAS_poster/"), width = 10, height = 4, units = "in")
+ggsave("A1_Results.png", path = here("reports/cas_poster/"), width = 10, height = 4, units = "in")
 spat_plots[["B1_stripe_4"]]
 spat_plots[["C1_stripe_4"]]
 spat_plots[["D1_stripe_4"]]
@@ -322,7 +322,7 @@ What we observe from @fig-2by2 is the consistent ability of the model to identif
 #|   group: single4by4
 
 spat_plots[["A1_stripe_16"]]
-ggsave("A1_results16.png", path = here("Reports/CAS_poster/"), width = 10, height = 4, units = "in")
+ggsave("A1_results16.png", path = here("reports/cas_poster/"), width = 10, height = 4, units = "in")
 spat_plots[["B1_stripe_16"]]
 spat_plots[["C1_stripe_16"]]
 spat_plots[["D1_stripe_16"]]

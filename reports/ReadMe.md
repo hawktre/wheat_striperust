@@ -1,6 +1,6 @@
 # Reports
   
-This folder contains the rmardown scripts and pdf output of reports.  
+This folder contains the Quarto source files and supporting material for reports.
   
 Details about the files:  
   

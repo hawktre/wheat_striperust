@@ -40,7 +40,7 @@ The saved outputs track:
   errors, and elapsed time; and
 - backward parameter estimates for secondary diagnostic use.
 
-`run_simulation_study_local.R` is intentionally sequential and defaults to one
-simulation across all four blocks and all three treatments. It checkpoints
-after every block-treatment scenario. An HPC array runner will be added after
-this local design passes a small smoke test.
+`run_simulation_study_local.R` runs a small checkpointed study across all four
+blocks and all three treatments. The production Slurm array runner is
+`run_simulation_replicate_hpc.R`; its launch and resource protocol is documented
+in `README_HPC.md`.

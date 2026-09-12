@@ -1,17 +1,15 @@
-**Project Name**: cucurbit_mildew  
+**Project Name**: wheat_striperust
 **PI**: David Gent  
 **Analyst**: Trent VanHawkins  
-**CIDA drive Location**:   
-**GitHub Location**:   
 
-Details about the folders:
+Tracked project folders:
 
 File | Description
 ---|----------------------------------------------------------
-Admin | contains the scope of work and other administrative documents
-Background | contains the background information for the analysis
-Code | contains all R scripts for this project
-DataRaw | contain all raw data provided by investigators
-DataProcessed | contains the processed data used for analysis
-Dissemination | contains any materials produced for dissemination, ie. Abstracts, Posters, Papers
-Reports | contains all output, rmarkdown files and report
+`src` | analysis, simulation, plotting, and utility source code
+`data` | raw and processed project data
+`output` | generated model and simulation outputs retained by the project
+`reports` | Quarto reports, references, and report-supporting files
+
+Administrative, background, dissemination, archive, and manuscript materials
+may remain in local lowercase folders, but are excluded from version control.

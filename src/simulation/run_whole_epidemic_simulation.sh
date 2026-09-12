@@ -4,19 +4,23 @@
 #SBATCH --output=output/simulation/whole_epidemic_study/hpc/logs/simulation_%A_%a.out
 #SBATCH --error=output/simulation/whole_epidemic_study/hpc/logs/simulation_%A_%a.err
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=20G
+#SBATCH --mem=12G
 #SBATCH --time=02:00:00
 
 set -euo pipefail
 
+# The submission helper changes to the repository root before calling sbatch.
+# Make that location explicit for every relative path used by R and here().
+cd "${SLURM_SUBMIT_DIR:?SLURM_SUBMIT_DIR is not set}"
+
 echo "Host: ${HOSTNAME}"
 echo "Job: ${SLURM_JOB_ID}"
-echo "Simulation: ${SLURM_ARRAY_TASK_ID}"
+echo "Batch: ${SLURM_ARRAY_TASK_ID}"
 echo "Cores: ${SLURM_CPUS_PER_TASK}"
 echo "Started: $(date)"
 
-# Each R worker is single-threaded; parallelism occurs across complete
-# block-treatment scenarios inside the array task.
+# Each R worker is single-threaded; up to eight of the twelve complete
+# block-treatment scenarios run in parallel inside the array task.
 export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
@@ -26,6 +30,22 @@ export VECLIB_MAXIMUM_THREADS=1
 export R_LIBS="${HOME}/R_libs/4.4"
 module load R
 
-Rscript --vanilla src/simulation/run_simulation_replicate_hpc.R
+simulations_per_job=10
+first_simulation=$(( (SLURM_ARRAY_TASK_ID - 1) * simulations_per_job + 1 ))
+last_simulation=$(( first_simulation + simulations_per_job - 1 ))
+batch_status=0
+
+echo "Simulations: ${first_simulation}-${last_simulation}"
+for ((
+  simulation_id = first_simulation;
+  simulation_id <= last_simulation;
+  simulation_id++
+)); do
+  if ! Rscript --vanilla \
+    src/simulation/run_simulation_replicate_hpc.R "${simulation_id}"; then
+    batch_status=1
+  fi
+done
 
 echo "Finished: $(date)"
+exit "${batch_status}"
