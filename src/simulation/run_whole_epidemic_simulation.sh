@@ -30,7 +30,12 @@ export VECLIB_MAXIMUM_THREADS=1
 export R_LIBS="${HOME}/R_libs/4.4"
 module load R
 
-simulations_per_job=10
+simulations_per_job="${SIMULATIONS_PER_JOB:-10}"
+if ! [[ "${simulations_per_job}" =~ ^[0-9]+$ ]] ||
+   (( simulations_per_job < 1 )); then
+  echo "SIMULATIONS_PER_JOB must be a positive integer."
+  exit 1
+fi
 first_simulation=$(( (SLURM_ARRAY_TASK_ID - 1) * simulations_per_job + 1 ))
 last_simulation=$(( first_simulation + simulations_per_job - 1 ))
 batch_status=0

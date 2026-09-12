@@ -34,17 +34,22 @@ sacctmgr show assoc where user="$USER" format=User,Account,Partition,QOS,MaxJobs
 sacctmgr show qos format=Name,MaxJobsPU,MaxSubmitJobsPU,MaxTRESPU
 ```
 
-Submit two pilot jobs containing simulations 1--20 with:
+Submit one pilot job containing only simulations 1--2 with:
 
 ```bash
-bash src/simulation/submit_whole_epidemic_simulations.sh 1 2 2
+bash src/simulation/submit_whole_epidemic_simulations.sh 1 1 1 2
 ```
 
-After checking runtimes and memory use, submit the remaining 98 jobs:
+The fourth argument temporarily changes the simulations-per-job value from 10
+to 2. After checking the pilot log and results, submit the complete production
+array with the normal 10-simulation batches:
 
 ```bash
-bash src/simulation/submit_whole_epidemic_simulations.sh 3 100 60
+bash src/simulation/submit_whole_epidemic_simulations.sh 1 100 60 10
 ```
+
+The first production job will detect and skip simulations 1 and 2 if their
+pilot results are already complete.
 
 Each simulation writes exactly one atomic RDS file. A result enters `complete/` only if
 all 12 block-treatment scenarios, 48 forward transitions, and 416 backward
