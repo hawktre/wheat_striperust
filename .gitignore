@@ -68,6 +68,11 @@ vignettes/*.pdf
 !/data/raw/*
 /data/raw/archive/
 
+# Retain the formatted experimental array required by the analyses.
+!/data/processed/
+!/data/processed/experimental/
+!/data/processed/experimental/mod_dat_arrays.rds
+
 # Retain the fitted parameters used to generate the simulation study.
 !/output/source_detection/forward_fits.rds
 
