@@ -428,7 +428,7 @@ library(tidyverse)
 library(here)
 library(sf)
 
-clusters <- readRDS(here("DataProcessed", "experimental", "grids_sp.rds"))
+clusters <- readRDS(here("data", "processed", "experimental", "grids_sp.rds"))
 
 plant_grid <- bind_rows(
   clusters$`4`$grid,

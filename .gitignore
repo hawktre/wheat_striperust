@@ -54,3 +54,8 @@ Code/ngoc_code/*
 
 .venv/*
 .positai
+
+# Slurm logs
+*.out
+*.err
+*.tmp*
