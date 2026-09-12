@@ -61,6 +61,16 @@ vignettes/*.pdf
 !/output/
 !/reports/
 
+# Track only the current, direct raw-data files. Exclude processed data and the
+# historical raw-data archive.
+/data/**
+!/data/raw/
+!/data/raw/*
+/data/raw/archive/
+
+# Retain the fitted parameters used to generate the simulation study.
+!/output/source_detection/forward_fits.rds
+
 # Slurm logs
 *.out
 *.err
